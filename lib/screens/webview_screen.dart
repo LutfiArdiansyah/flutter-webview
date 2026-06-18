@@ -69,6 +69,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
             _handleWebViewError(error);
           },
           onNavigationRequest: (NavigationRequest request) {
+            final currentHost =
+                Uri.parse(_selectedWebsite!.webviewUrl).host;
+
+            final nextHost =
+                Uri.parse(request.url).host;
+
+            if (nextHost != currentHost) {
+              debugPrint('Blocked: ${request.url}');
+              return NavigationDecision.prevent;
+            }
+
             return NavigationDecision.navigate;
           },
         ),
