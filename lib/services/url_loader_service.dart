@@ -7,9 +7,9 @@ import 'package:http/http.dart' as http;
 import '../constants/app_constants.dart';
 import '../models/webview_config.dart';
 
-/// Service to load WebView URL from remote JSON configuration
+/// Service to load website entries from remote JSON configuration
 class UrlLoaderService {
-  /// Fetch WebView URL from GitHub JSON
+  /// Fetch website list from GitHub JSON
   ///
   /// Throws:
   /// - [TimeoutException] if request times out
@@ -17,14 +17,14 @@ class UrlLoaderService {
   /// - [FormatException] if JSON format is invalid
   /// - [HttpException] if HTTP request fails
   /// - [ArgumentError] if URL is invalid
-  Future<String> fetchWebViewUrl() async {
+  Future<List<WebsiteConfig>> fetchWebsites() async {
     try {
       final response = await http
           .get(
             Uri.parse(AppConstants.jsonUrl),
             headers: {
               'Accept': 'application/json',
-              'User-Agent': 'AnimeWebView/1.0',
+              'User-Agent': 'WebSpace/1.0',
             },
           )
           .timeout(
@@ -50,18 +50,35 @@ class UrlLoaderService {
 
   /// Parse and validate the JSON response
   ///
-  /// Returns the valid WebView URL
-  /// Throws [FormatException] if JSON is invalid or URL is invalid
-  String _parseAndValidateResponse(String responseBody) {
+  /// Returns the valid website list
+  /// Throws [FormatException] if JSON is invalid or data is invalid
+  List<WebsiteConfig> _parseAndValidateResponse(String responseBody) {
     try {
-      final json = jsonDecode(responseBody) as Map<String, dynamic>;
-      final config = WebViewConfig.fromJson(json);
-      
-      if (!_isValidUrl(config.webviewUrl)) {
-        throw FormatException('Invalid URL: ${config.webviewUrl}');
+      final json = jsonDecode(responseBody);
+      if (json is! List) {
+        throw FormatException('Expected a list of website configurations');
       }
-      
-      return config.webviewUrl;
+
+      final websites = <WebsiteConfig>[];
+      for (final item in json) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+
+        final config = WebsiteConfig.fromJson(item);
+
+        if (!_isValidUrl(config.webviewUrl)) {
+          throw FormatException('Invalid URL: ${config.webviewUrl}');
+        }
+
+        websites.add(config);
+      }
+
+      if (websites.isEmpty) {
+        throw FormatException('No valid website configuration found');
+      }
+
+      return websites;
     } catch (e) {
       if (e is FormatException) {
         rethrow;

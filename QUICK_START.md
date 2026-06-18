@@ -2,8 +2,8 @@
 
 ## Step 1: Extract & Setup
 ```bash
-unzip anime_webview_app.zip
-cd anime_webview_app
+unzip webspace_app.zip
+cd webspace_app
 flutter pub get
 ```
 

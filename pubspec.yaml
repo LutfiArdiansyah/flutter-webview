@@ -1,4 +1,4 @@
-name: anime_webview
+name: webspace
 description: "A Flutter application that displays webview from remote JSON configuration."
 publish_to: 'none'
 

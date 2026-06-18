@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../constants/app_constants.dart';
+import '../models/webview_config.dart';
 import '../screens/error_logs_screen.dart';
 import '../services/error_logger_service.dart';
 import '../services/url_loader_service.dart';
@@ -19,20 +20,23 @@ class WebViewScreen extends StatefulWidget {
 }
 
 class _WebViewScreenState extends State<WebViewScreen> {
-  late WebViewController _webViewController;
-  String? _url;
+  late final WebViewController _webViewController;
+  final UrlLoaderService _urlLoaderService = UrlLoaderService();
+  final ErrorLoggerService _errorLogger = ErrorLoggerService();
+
+  List<WebsiteConfig> _websites = [];
+  WebsiteConfig? _selectedWebsite;
   String? _errorMessage;
   DateTime? _lastBackPressed;
   bool _isLoadingUrl = true;
   bool _isLoadingWebView = false;
-  final UrlLoaderService _urlLoaderService = UrlLoaderService();
-  final ErrorLoggerService _errorLogger = ErrorLoggerService();
+  bool _selectionDialogVisible = false;
 
   @override
   void initState() {
     super.initState();
     _initializeWebView();
-    _loadUrl();
+    _loadWebsites();
   }
 
   /// Initialize WebViewController with proper settings
@@ -42,48 +46,134 @@ class _WebViewScreenState extends State<WebViewScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
+            if (!mounted) return;
             setState(() => _isLoadingWebView = true);
           },
           onPageFinished: (String url) {
+            if (!mounted) return;
             setState(() => _isLoadingWebView = false);
           },
           onWebResourceError: (WebResourceError error) {
-            // Ignore subresource errors
             final bool isMainFrame = error.isForMainFrame ?? false;
 
             if (!isMainFrame) {
               return;
             }
 
-            // Ignore some non-critical network errors
             if (error.description.contains('ERR_CONNECTION_REFUSED') ||
                 error.description.contains('ERR_ABORTED')) {
-              debugPrint(
-                'Ignoring WebView error: ${error.description}',
-              );
+              debugPrint('Ignoring WebView error: ${error.description}');
               return;
             }
 
             _handleWebViewError(error);
           },
           onNavigationRequest: (NavigationRequest request) {
-            // Allow all navigation
             return NavigationDecision.navigate;
           },
         ),
       );
   }
 
-  /// Load URL from remote JSON configuration
-  Future<void> _loadUrl() async {
+  /// Load website list from remote JSON configuration
+  Future<void> _loadWebsites() async {
     try {
-      final url = await _urlLoaderService.fetchWebViewUrl();
-      setState(() => _url = url);
+      final websites = await _urlLoaderService.fetchWebsites();
+      if (!mounted) {
+        return;
+      }
 
-      await _webViewController.loadRequest(Uri.parse(url));
+      setState(() {
+        _websites = websites;
+        _errorMessage = null;
+        _isLoadingUrl = false;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showWebsiteSelectionDialog();
+      });
     } catch (e) {
       _handleError(e);
     }
+  }
+
+  /// Show popup selection for website choice
+  Future<void> _showWebsiteSelectionDialog() async {
+    if (!mounted || _selectionDialogVisible || _websites.isEmpty) {
+      return;
+    }
+
+    _selectionDialogVisible = true;
+
+    WebsiteConfig? tempSelected =
+        _selectedWebsite ?? (_websites.isNotEmpty ? _websites.first : null);
+
+    final selectedWebsite = await showDialog<WebsiteConfig>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(AppConstants.appSelectionTitle),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final website in _websites)
+                        RadioListTile<WebsiteConfig>(
+                          contentPadding: EdgeInsets.zero,
+                          value: website,
+                          groupValue: tempSelected,
+                          title: Text(website.websiteName),
+                          subtitle: Text(
+                            website.webviewUrl,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              tempSelected = value;
+                            });
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: tempSelected == null
+                      ? null
+                      : () => Navigator.pop(dialogContext, tempSelected),
+                  child: const Text(AppConstants.openButtonLabel),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    _selectionDialogVisible = false;
+
+    if (!mounted || selectedWebsite == null) {
+      if (mounted && _websites.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showWebsiteSelectionDialog();
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _selectedWebsite = selectedWebsite;
+      _isLoadingUrl = false;
+    });
+
+    await _webViewController.loadRequest(Uri.parse(selectedWebsite.webviewUrl));
   }
 
   /// Handle WebView loading errors
@@ -102,15 +192,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
       errorMsg = 'Error: ${error.description}';
     }
 
-    // Log error
     _errorLogger.logError(
       'WebView Loading Error',
       errorMsg,
       stackTrace: error.description,
     );
 
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
-      // _errorMessage = errorMsg;
       _isLoadingWebView = false;
     });
   }
@@ -138,12 +230,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
       errorTitle = 'Invalid URL Error';
     }
 
-    // Log error
     _errorLogger.logError(
       errorTitle,
       errorMsg,
       stackTrace: error.toString(),
     );
+
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _errorMessage = errorMsg;
@@ -151,141 +246,152 @@ class _WebViewScreenState extends State<WebViewScreen> {
     });
   }
 
-  /// Retry loading URL
+  /// Retry loading website list
   void _retry() {
     setState(() {
       _errorMessage = null;
       _isLoadingUrl = true;
-      _url = null;
+      _websites = [];
+      _selectedWebsite = null;
     });
-    _loadUrl();
+    _loadWebsites();
+  }
+
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(AppConstants.appTitle),
+        elevation: 0,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              _websites.isEmpty
+                  ? 'Memuat daftar website...'
+                  : 'Memuat website terpilih...',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(AppConstants.appTitle),
+        elevation: 0,
+        backgroundColor: Colors.red.shade700,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.list),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ErrorLogsScreen(),
+                ),
+              ).then((_) {
+                if (mounted) {
+                  setState(() {});
+                }
+              });
+            },
+            tooltip: 'View error logs',
+          ),
+        ],
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 80,
+                color: Colors.red.shade400,
+              ),
+              const SizedBox(height: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              const SizedBox(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _retry,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ErrorLogsScreen(),
+                        ),
+                      ).then((_) {
+                        if (mounted) {
+                          setState(() {});
+                        }
+                      });
+                    },
+                    icon: const Icon(Icons.bug_report),
+                    label: const Text('View Logs'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show error screen if error occurred
     if (_errorMessage != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text(AppConstants.appTitle),
-          elevation: 0,
-          backgroundColor: Colors.red.shade700,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.list),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ErrorLogsScreen(),
-                  ),
-                ).then((_) {
-                  // Refresh state after returning from logs screen
-                  setState(() {});
-                });
-              },
-              tooltip: 'View error logs',
-            ),
-          ],
-        ),
-        body: Center(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 80,
-                  color: Colors.red.shade400,
-                ),
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    _errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _retry,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ErrorLogsScreen(),
-                          ),
-                        ).then((_) {
-                          setState(() {});
-                        });
-                      },
-                      icon: const Icon(Icons.bug_report),
-                      label: const Text('View Logs'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      return _buildErrorScreen();
     }
 
-    // Show loading screen while fetching URL
-    if (_url == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text(AppConstants.appTitle),
-          elevation: 0,
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading configuration...'),
-            ],
-          ),
-        ),
-      );
+    if (_isLoadingUrl || _selectedWebsite == null) {
+      return _buildLoadingScreen();
     }
 
-    // Show WebView
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) async {
         if (didPop) return;
 
-        // Jika WebView masih memiliki history, kembali ke halaman sebelumnya
         if (await _webViewController.canGoBack()) {
           await _webViewController.goBack();
           return;
         }
 
-        // Double back untuk keluar aplikasi
         final now = DateTime.now();
 
         if (_lastBackPressed == null ||
@@ -328,7 +434,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                 builder: (context) => const ErrorLogsScreen(),
                               ),
                             ).then((_) {
-                              setState(() {});
+                              if (mounted) {
+                                setState(() {});
+                              }
                             });
                           },
                           tooltip: 'View error logs',
@@ -381,10 +489,5 @@ class _WebViewScreenState extends State<WebViewScreen> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }

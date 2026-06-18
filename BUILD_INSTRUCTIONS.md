@@ -26,8 +26,8 @@ Before building, ensure you have:
 
 ### Step 1: Extract Project
 ```bash
-unzip anime_webview_app.zip
-cd anime_webview_app
+unzip webspace_app.zip
+cd webspace_app
 ```
 
 ### Step 2: Get Dependencies
@@ -171,7 +171,7 @@ flutter build appbundle  # This builds for Google Play
 
 3. Launch app:
    ```bash
-   adb shell am start -n com.example.anime_webview/.MainActivity
+adb shell am start -n com.example.webspace/.MainActivity
    ```
 
 ### On Physical Android Device
@@ -340,4 +340,4 @@ After building, verify:
 ---
 
 **Last Updated:** 2024
-**Created For:** Anime WebView App v1.0.0
+**Created For:** WebSpace App v1.0.0

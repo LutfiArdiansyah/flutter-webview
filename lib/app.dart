@@ -4,8 +4,8 @@ import 'constants/app_constants.dart';
 import 'screens/webview_screen.dart';
 
 /// Main application widget
-class AnimeWebViewApp extends StatelessWidget {
-  const AnimeWebViewApp({Key? key}) : super(key: key);
+class WebSpaceApp extends StatelessWidget {
+  const WebSpaceApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {

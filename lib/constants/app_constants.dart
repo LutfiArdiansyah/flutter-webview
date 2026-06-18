@@ -8,7 +8,17 @@ class AppConstants {
   static const int requestTimeoutSeconds = 10;
 
   /// App title
-  static const String appTitle = 'Anime WebView';
+  static const String appTitle = 'WebSpace';
+
+  /// App name shown in selection dialog
+  static const String appSelectionTitle = 'Pilih Website';
+
+  /// Selection dialog action label
+  static const String openButtonLabel = 'Masuk';
+
+  /// Empty state for website selection
+  static const String noWebsiteAvailableMessage =
+      'Tidak ada website yang tersedia.';
 
   /// Error message for timeout
   static const String timeoutErrorMessage =

@@ -1,4 +1,4 @@
-# Anime WebView App
+# WebSpace App
 
 A Flutter application that displays webview from remote JSON configuration. Supports Android (including older versions), iOS, and Android Set Top Box (TV).
 
@@ -29,8 +29,8 @@ If Flutter is not installed, follow: https://flutter.dev/docs/get-started/instal
 
 ### 2. Extract & Navigate to Project
 ```bash
-unzip anime_webview_app.zip
-cd anime_webview_app
+unzip webspace_app.zip
+cd webspace_app
 ```
 
 ### 3. Get Dependencies
@@ -92,10 +92,13 @@ static const String jsonUrl =
 The JSON file should have this structure:
 
 ```json
-{
-  "webview_url": "https://example.com",
-  "version": "1.0"
-}
+[
+  {
+    "webview_url": "https://example.com",
+    "website_name": "Example",
+    "version": "1.0"
+  }
+]
 ```
 
 ### Customize Timeout

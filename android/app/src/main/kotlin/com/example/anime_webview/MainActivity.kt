@@ -1,4 +1,4 @@
-package com.example.anime_webview
+package com.example.webspace
 
 import io.flutter.embedding.android.FlutterActivity
 
