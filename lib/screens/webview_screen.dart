@@ -31,12 +31,27 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _isLoadingUrl = true;
   bool _isLoadingWebView = false;
   bool _selectionDialogVisible = false;
+  bool _isLandscapeMode = false;
+  bool _orientationInitialized = false;
 
   @override
   void initState() {
     super.initState();
     _initializeWebView();
     _loadWebsites();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_orientationInitialized) {
+      return;
+    }
+
+    _isLandscapeMode =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    _orientationInitialized = true;
   }
 
   /// Initialize WebViewController with proper settings
@@ -69,11 +84,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
             _handleWebViewError(error);
           },
           onNavigationRequest: (NavigationRequest request) {
-            final currentHost =
-                Uri.parse(_selectedWebsite!.webviewUrl).host;
+            final currentHost = Uri.parse(_selectedWebsite!.webviewUrl).host;
 
-            final nextHost =
-                Uri.parse(request.url).host;
+            final nextHost = Uri.parse(request.url).host;
 
             if (nextHost != currentHost) {
               debugPrint('Blocked: ${request.url}');
@@ -268,6 +281,44 @@ class _WebViewScreenState extends State<WebViewScreen> {
     _loadWebsites();
   }
 
+  Future<void> _toggleOrientation() async {
+    final targetLandscape = !_isLandscapeMode;
+    final orientations = targetLandscape
+        ? const [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]
+        : const [
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.portraitDown,
+          ];
+
+    await SystemChrome.setPreferredOrientations(orientations);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isLandscapeMode = targetLandscape;
+    });
+  }
+
+  Widget _buildOrientationToggleButton() {
+    final nextIsLandscape = !_isLandscapeMode;
+    final icon = nextIsLandscape
+        ? Icons.screen_lock_landscape
+        : Icons.screen_lock_portrait;
+    final tooltip = nextIsLandscape ? 'Ubah ke landscape' : 'Ubah ke portrait';
+
+    return FloatingActionButton(
+      heroTag: 'orientation-toggle',
+      onPressed: _toggleOrientation,
+      tooltip: tooltip,
+      child: Icon(icon),
+    );
+  }
+
   Widget _buildLoadingScreen() {
     return Scaffold(
       appBar: AppBar(
@@ -288,6 +339,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ],
         ),
       ),
+      floatingActionButton: _buildOrientationToggleButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
     );
   }
 
@@ -380,6 +433,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
           ),
         ),
       ),
+      floatingActionButton: _buildOrientationToggleButton(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
     );
   }
 
@@ -495,9 +550,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   right: 0,
                   child: LinearProgressIndicator(),
                 ),
+              
+              Positioned(
+                left: 16,
+                bottom: 80, // posisi tombol
+                child: _buildOrientationToggleButton(),
+              ),
             ],
           ),
         ),
+        /* floatingActionButton: _buildOrientationToggleButton(),
+        floatingActionButtonLocation: FloatingActionButtonLocation.startFloat, */
       ),
     );
   }
