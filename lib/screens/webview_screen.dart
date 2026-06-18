@@ -539,7 +539,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             : null,
         body: SafeArea(
           top: true,
-          bottom: false,
+          bottom: true,
           child: Stack(
             children: [
               WebViewWidget(controller: _webViewController),
