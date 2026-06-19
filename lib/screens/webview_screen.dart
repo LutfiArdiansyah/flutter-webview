@@ -23,6 +23,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _webViewController;
   final UrlLoaderService _urlLoaderService = UrlLoaderService();
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
+  final FocusNode _webViewFocusNode = FocusNode();
 
   List<WebsiteConfig> _websites = [];
   WebsiteConfig? _selectedWebsite;
@@ -39,6 +40,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
     super.initState();
     _initializeWebView();
     _loadWebsites();
+  }
+
+  @override
+  void dispose() {
+    _webViewFocusNode.dispose();
+    super.dispose();
   }
 
   @override
@@ -67,6 +74,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
           onPageFinished: (String url) {
             if (!mounted) return;
             setState(() => _isLoadingWebView = false);
+            _webViewFocusNode.requestFocus();
           },
           onWebResourceError: (WebResourceError error) {
             final bool isMainFrame = error.isForMainFrame ?? false;
@@ -146,18 +154,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      for (final website in _websites)
-                        RadioListTile<WebsiteConfig>(
-                          contentPadding: EdgeInsets.zero,
-                          value: website,
-                          groupValue: tempSelected,
-                          title: Text(website.websiteName),
-                          subtitle: Text(
-                            website.webviewUrl,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onChanged: (value) {
+                      for (int i = 0; i < _websites.length; i++)
+                        _DialogWebsiteItem(
+                          website: _websites[i],
+                          tempSelected: tempSelected,
+                          autofocus: i == 0,
+                          onSelected: (value) {
                             setDialogState(() {
                               tempSelected = value;
                             });
@@ -198,6 +200,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     });
 
     await _webViewController.loadRequest(Uri.parse(selectedWebsite.webviewUrl));
+    _webViewFocusNode.requestFocus();
   }
 
   /// Handle WebView loading errors
@@ -542,7 +545,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
           bottom: true,
           child: Stack(
             children: [
-              WebViewWidget(controller: _webViewController),
+              Focus(
+                focusNode: _webViewFocusNode,
+                autofocus: true,
+                child: WebViewWidget(controller: _webViewController),
+              ),
               if (_isLoadingWebView)
                 const Positioned(
                   top: 0,
@@ -565,3 +572,121 @@ class _WebViewScreenState extends State<WebViewScreen> {
     );
   }
 }
+
+class _DialogWebsiteItem extends StatefulWidget {
+  final WebsiteConfig website;
+  final WebsiteConfig? tempSelected;
+  final bool autofocus;
+  final ValueChanged<WebsiteConfig?> onSelected;
+
+  const _DialogWebsiteItem({
+    Key? key,
+    required this.website,
+    required this.tempSelected,
+    required this.autofocus,
+    required this.onSelected,
+  }) : super(key: key);
+
+  @override
+  State<_DialogWebsiteItem> createState() => _DialogWebsiteItemState();
+}
+
+class _DialogWebsiteItemState extends State<_DialogWebsiteItem> {
+  final FocusNode _focusNode = FocusNode();
+  bool _isFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    setState(() {
+      _isFocused = _focusNode.hasFocus;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final website = widget.website;
+    final tempSelected = widget.tempSelected;
+    final isFocused = _isFocused;
+
+    return InkWell(
+      focusNode: _focusNode,
+      autofocus: widget.autofocus,
+      onTap: () {
+        _focusNode.requestFocus();
+        widget.onSelected(website);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isFocused
+              ? Theme.of(context).colorScheme.primaryContainer
+              : (tempSelected == website
+                  ? Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.4)
+                  : Colors.transparent),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isFocused
+                ? Theme.of(context).colorScheme.primary
+                : (tempSelected == website
+                    ? Theme.of(context).colorScheme.secondary
+                    : Colors.grey.shade300),
+            width: isFocused ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Radio<WebsiteConfig>(
+              value: website,
+              groupValue: tempSelected,
+              onChanged: (value) {
+                _focusNode.requestFocus();
+                widget.onSelected(value);
+              },
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    website.websiteName,
+                    style: TextStyle(
+                      fontWeight: isFocused || tempSelected == website
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    website.webviewUrl,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
