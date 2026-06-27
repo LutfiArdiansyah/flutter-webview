@@ -5,7 +5,7 @@ import '../services/error_logger_service.dart';
 
 /// Screen to display error logs with copy functionality
 class ErrorLogsScreen extends StatefulWidget {
-  const ErrorLogsScreen({Key? key}) : super(key: key);
+  const ErrorLogsScreen({super.key});
 
   @override
   State<ErrorLogsScreen> createState() => _ErrorLogsScreenState();
@@ -172,9 +172,8 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
                         _copySuccess ? 'Copied!' : 'Copy All Logs',
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _copySuccess
-                            ? Colors.green
-                            : Colors.blue.shade600,
+                        backgroundColor:
+                            _copySuccess ? Colors.green : Colors.blue.shade600,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                     ),
@@ -202,9 +201,8 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
 
 /// Individual log card widget
 class _LogCard extends StatelessWidget {
-  final LogEntry log;
-
   const _LogCard({required this.log});
+  final LogEntry log;
 
   @override
   Widget build(BuildContext context) {
@@ -297,7 +295,6 @@ class _LogCard extends StatelessWidget {
   }
 
   /// Format time to HH:mm:ss
-  String _formatTime(DateTime dateTime) {
-    return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
-  }
+  String _formatTime(DateTime dateTime) =>
+      '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
 }

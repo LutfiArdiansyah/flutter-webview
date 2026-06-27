@@ -1,14 +1,5 @@
 /// Model for a website entry in the remote configuration
 class WebsiteConfig {
-  /// The display name for the website
-  final String websiteName;
-
-  /// The URL to be displayed in WebView
-  final String webviewUrl;
-
-  /// Configuration version
-  final String? version;
-
   WebsiteConfig({
     required this.websiteName,
     required this.webviewUrl,
@@ -34,12 +25,19 @@ class WebsiteConfig {
     );
   }
 
+  /// The display name for the website
+  final String websiteName;
+
+  /// The URL to be displayed in WebView
+  final String webviewUrl;
+
+  /// Configuration version
+  final String? version;
+
   /// Convert to JSON
-  Map<String, dynamic> toJson() {
-    return {
-      'website_name': websiteName,
-      'webview_url': webviewUrl,
-      'version': version,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        'website_name': websiteName,
+        'webview_url': webviewUrl,
+        'version': version,
+      };
 }

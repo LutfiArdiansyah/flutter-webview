@@ -19,19 +19,16 @@ class UrlLoaderService {
   /// - [ArgumentError] if URL is invalid
   Future<List<WebsiteConfig>> fetchWebsites() async {
     try {
-      final response = await http
-          .get(
-            Uri.parse(AppConstants.jsonUrl),
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'WebSpace/1.0',
-            },
-          )
-          .timeout(
-            Duration(seconds: AppConstants.requestTimeoutSeconds),
-            onTimeout: () =>
-                throw TimeoutException('URL fetch timeout'),
-          );
+      final response = await http.get(
+        Uri.parse(AppConstants.jsonUrl),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'WebSpace/1.0',
+        },
+      ).timeout(
+        const Duration(seconds: AppConstants.requestTimeoutSeconds),
+        onTimeout: () => throw TimeoutException('URL fetch timeout'),
+      );
 
       if (response.statusCode == 200) {
         return _parseAndValidateResponse(response.body);
@@ -39,11 +36,11 @@ class UrlLoaderService {
         throw HttpException(
             'HTTP ${response.statusCode}: Failed to fetch configuration');
       }
-    } on SocketException catch (e) {
+    } on SocketException {
       rethrow;
-    } on TimeoutException catch (e) {
+    } on TimeoutException {
       rethrow;
-    } on FormatException catch (e) {
+    } on FormatException {
       rethrow;
     }
   }
@@ -56,7 +53,8 @@ class UrlLoaderService {
     try {
       final json = jsonDecode(responseBody);
       if (json is! List) {
-        throw FormatException('Expected a list of website configurations');
+        throw const FormatException(
+            'Expected a list of website configurations');
       }
 
       final websites = <WebsiteConfig>[];
@@ -75,7 +73,7 @@ class UrlLoaderService {
       }
 
       if (websites.isEmpty) {
-        throw FormatException('No valid website configuration found');
+        throw const FormatException('No valid website configuration found');
       }
 
       return websites;
@@ -93,9 +91,9 @@ class UrlLoaderService {
   bool _isValidUrl(String url) {
     try {
       final uri = Uri.parse(url);
-      return uri.hasScheme && 
-             (uri.scheme == 'http' || uri.scheme == 'https') &&
-             uri.host.isNotEmpty;
+      return uri.hasScheme &&
+          (uri.scheme == 'http' || uri.scheme == 'https') &&
+          uri.host.isNotEmpty;
     } catch (e) {
       return false;
     }

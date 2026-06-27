@@ -16,7 +16,7 @@ import '../services/url_loader_service.dart';
 
 /// Main screen displaying WebView content
 class WebViewScreen extends StatefulWidget {
-  const WebViewScreen({Key? key}) : super(key: key);
+  const WebViewScreen({super.key});
 
   @override
   State<WebViewScreen> createState() => _WebViewScreenState();
@@ -78,7 +78,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             _webViewFocusNode.requestFocus();
           },
           onWebResourceError: (WebResourceError error) {
-            final bool isMainFrame = error.isForMainFrame ?? false;
+            final isMainFrame = error.isForMainFrame ?? false;
             if (!isMainFrame) return;
 
             if (error.description.contains('ERR_CONNECTION_REFUSED') ||
@@ -134,140 +134,137 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
     _selectionDialogVisible = true;
 
-    WebsiteConfig? tempSelected =
+    var tempSelected =
         _selectedWebsite ?? (_websites.isNotEmpty ? _websites.first : null);
 
     final selectedWebsite = await showDialog<WebsiteConfig>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) {
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: StatefulBuilder(
-            builder: (context, setDialogState) {
-              return Dialog(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                child: Container(
-                  constraints:
-                      const BoxConstraints(maxWidth: 500, maxHeight: 600),
-                  decoration: BoxDecoration(
-                    color:
-                        Theme.of(context).colorScheme.surface.withOpacity(0.85),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.4),
-                          blurRadius: 40,
-                          spreadRadius: 10),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Icon(Icons.movie_filter,
-                                  color: Theme.of(context).colorScheme.primary),
+      builder: (dialogContext) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: Container(
+                constraints:
+                    const BoxConstraints(maxWidth: 500, maxHeight: 600),
+                decoration: BoxDecoration(
+                  color:
+                      Theme.of(context).colorScheme.surface.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 40,
+                        spreadRadius: 10),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                            const SizedBox(width: 16),
-                            Text(
-                              AppConstants.appSelectionTitle,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
+                            child: Icon(Icons.movie_filter,
+                                color: Theme.of(context).colorScheme.primary),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            AppConstants.appSelectionTitle,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ),
-                      const Divider(height: 1, color: Colors.white12),
-                      Flexible(
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          itemCount: _websites.length,
-                          itemBuilder: (context, i) {
-                            return _DialogWebsiteItem(
-                              website: _websites[i],
-                              tempSelected: tempSelected,
-                              autofocus: i == 0,
-                              onSelected: (value) {
-                                setDialogState(() => tempSelected = value);
-                              },
-                            );
-                          },
-                        ),
+                    ),
+                    const Divider(height: 1, color: Colors.white12),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        itemCount: _websites.length,
+                        itemBuilder: (context, i) {
+                          return _DialogWebsiteItem(
+                            website: _websites[i],
+                            tempSelected: tempSelected,
+                            autofocus: i == 0,
+                            onSelected: (value) {
+                              setDialogState(() => tempSelected = value);
+                            },
+                          );
+                        },
                       ),
-                      const Divider(height: 1, color: Colors.white12),
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
+                    ),
+                    const Divider(height: 1, color: Colors.white12),
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => SystemNavigator.pop(),
+                            child: const Text('Keluar',
+                                style: TextStyle(color: Colors.redAccent)),
+                          ),
+                          const Spacer(),
+                          if (_selectedWebsite != null)
                             TextButton(
-                              onPressed: () => SystemNavigator.pop(),
-                              child: const Text('Keluar',
-                                  style: TextStyle(color: Colors.redAccent)),
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Batal',
+                                  style: TextStyle(color: Colors.white70)),
                             ),
-                            const Spacer(),
-                            if (_selectedWebsite != null)
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialogContext),
-                                child: const Text('Batal',
-                                    style: TextStyle(color: Colors.white70)),
-                              ),
-                            const SizedBox(width: 12),
-                            ElevatedButton(
-                              onPressed: tempSelected == null
-                                  ? null
-                                  : () => Navigator.pop(
-                                      dialogContext, tempSelected),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    Theme.of(context).colorScheme.primary,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16)),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 32, vertical: 16),
-                                elevation: 8,
-                                shadowColor: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withOpacity(0.5),
-                              ),
-                              child: const Text(AppConstants.openButtonLabel,
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: tempSelected == null
+                                ? null
+                                : () =>
+                                    Navigator.pop(dialogContext, tempSelected),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 32, vertical: 16),
+                              elevation: 8,
+                              shadowColor: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.5),
                             ),
-                          ],
-                        ),
+                            child: const Text(AppConstants.openButtonLabel,
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )
-                    .animate()
-                    .scale(curve: Curves.easeOutBack, duration: 400.ms)
-                    .fadeIn(),
-              );
-            },
-          ),
-        );
-      },
+                    ),
+                  ],
+                ),
+              )
+                  .animate()
+                  .scale(curve: Curves.easeOutBack, duration: 400.ms)
+                  .fadeIn(),
+            );
+          },
+        ),
+      ),
     );
 
     _selectionDialogVisible = false;
@@ -291,7 +288,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   void _handleWebViewError(WebResourceError error) {
-    String errorMsg = 'Failed to load page';
+    var errorMsg = 'Failed to load page';
     if (error.description.contains('net::ERR_NAME_NOT_RESOLVED')) {
       errorMsg = 'DNS resolution failed. Check your connection.';
     } else if (error.description.contains('net::ERR_CONNECTION_REFUSED')) {
@@ -311,8 +308,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   void _handleError(Object error) {
-    String errorMsg = AppConstants.genericErrorMessage;
-    String errorTitle = 'Unknown Error';
+    var errorMsg = AppConstants.genericErrorMessage;
+    var errorTitle = 'Unknown Error';
 
     if (error is TimeoutException) {
       errorMsg = AppConstants.timeoutErrorMessage;
@@ -364,251 +361,245 @@ class _WebViewScreenState extends State<WebViewScreen> {
     setState(() => _isLandscapeMode = targetLandscape);
   }
 
-  Widget _buildFloatingButtons() {
-    return Padding(
-        padding: const EdgeInsets.only(bottom: 30.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (_isFabExpanded) ...[
-              FloatingActionButton.extended(
-                heroTag: 'switch-website',
-                onPressed: () {
-                  setState(() => _isFabExpanded = false);
-                  _showWebsiteSelectionDialog();
-                },
-                icon: const Icon(Icons.public),
-                label: const Text('Ganti Website',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.white,
-              )
-                  .animate()
-                  .slideY(
-                      begin: 1,
-                      end: 0,
-                      duration: 250.ms,
-                      curve: Curves.easeOutBack)
-                  .fadeIn(),
-              const SizedBox(height: 16),
-              FloatingActionButton.extended(
-                heroTag: 'orientation-toggle',
-                onPressed: () {
-                  setState(() => _isFabExpanded = false);
-                  _toggleOrientation();
-                },
-                icon: Icon(_isLandscapeMode
-                    ? Icons.screen_lock_landscape
-                    : Icons.screen_lock_portrait),
-                label: Text(
-                    _isLandscapeMode ? 'Mode Landscape' : 'Mode Portrait',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                backgroundColor: Theme.of(context).colorScheme.secondary,
-                foregroundColor: Theme.of(context).colorScheme.onSecondary,
-              )
-                  .animate()
-                  .slideY(
-                      begin: 1,
-                      end: 0,
-                      duration: 250.ms,
-                      curve: Curves.easeOutBack,
-                      delay: 50.ms)
-                  .fadeIn(),
-              const SizedBox(height: 16),
-              FloatingActionButton.extended(
-                heroTag: 'exit-app',
-                onPressed: () {
-                  setState(() => _isFabExpanded = false);
-                  SystemNavigator.pop();
-                },
-                icon: const Icon(Icons.exit_to_app),
-                label: const Text('Keluar',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                backgroundColor: Colors.red.shade700,
-                foregroundColor: Colors.white,
-              )
-                  .animate()
-                  .slideY(
-                      begin: 1,
-                      end: 0,
-                      duration: 250.ms,
-                      curve: Curves.easeOutBack,
-                      delay: 100.ms)
-                  .fadeIn(),
-              const SizedBox(height: 16),
-            ],
-            FloatingActionButton(
-              heroTag: 'menu-toggle',
+  Widget _buildFloatingButtons() => Padding(
+      padding: const EdgeInsets.only(bottom: 30.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (_isFabExpanded) ...[
+            FloatingActionButton.extended(
+              heroTag: 'switch-website',
               onPressed: () {
-                setState(() {
-                  _isFabExpanded = !_isFabExpanded;
-                });
+                setState(() => _isFabExpanded = false);
+                _showWebsiteSelectionDialog();
               },
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, anim) => RotationTransition(
-                    turns: child.key == const ValueKey('icon1')
-                        ? Tween<double>(begin: 0.5, end: 1).animate(anim)
-                        : Tween<double>(begin: 0.5, end: 1).animate(anim),
-                    child: FadeTransition(opacity: anim, child: child)),
-                child: _isFabExpanded
-                    ? const Icon(Icons.close, key: ValueKey('icon1'), size: 28)
-                    : const Icon(Icons.menu, key: ValueKey('icon2'), size: 28),
-              ),
-            ),
+              icon: const Icon(Icons.public),
+              label: const Text('Ganti Website',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Colors.white,
+            )
+                .animate()
+                .slideY(
+                    begin: 1,
+                    end: 0,
+                    duration: 250.ms,
+                    curve: Curves.easeOutBack)
+                .fadeIn(),
+            const SizedBox(height: 16),
+            FloatingActionButton.extended(
+              heroTag: 'orientation-toggle',
+              onPressed: () {
+                setState(() => _isFabExpanded = false);
+                _toggleOrientation();
+              },
+              icon: Icon(_isLandscapeMode
+                  ? Icons.screen_lock_landscape
+                  : Icons.screen_lock_portrait),
+              label: Text(_isLandscapeMode ? 'Mode Landscape' : 'Mode Portrait',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              backgroundColor: Theme.of(context).colorScheme.secondary,
+              foregroundColor: Theme.of(context).colorScheme.onSecondary,
+            )
+                .animate()
+                .slideY(
+                    begin: 1,
+                    end: 0,
+                    duration: 250.ms,
+                    curve: Curves.easeOutBack,
+                    delay: 50.ms)
+                .fadeIn(),
+            const SizedBox(height: 16),
+            FloatingActionButton.extended(
+              heroTag: 'exit-app',
+              onPressed: () {
+                setState(() => _isFabExpanded = false);
+                SystemNavigator.pop();
+              },
+              icon: const Icon(Icons.exit_to_app),
+              label: const Text('Keluar',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            )
+                .animate()
+                .slideY(
+                    begin: 1,
+                    end: 0,
+                    duration: 250.ms,
+                    curve: Curves.easeOutBack,
+                    delay: 100.ms)
+                .fadeIn(),
+            const SizedBox(height: 16),
           ],
-        ));
-  }
+          FloatingActionButton(
+            heroTag: 'menu-toggle',
+            onPressed: () {
+              setState(() {
+                _isFabExpanded = !_isFabExpanded;
+              });
+            },
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, anim) => RotationTransition(
+                  turns: child.key == const ValueKey('icon1')
+                      ? Tween<double>(begin: 0.5, end: 1).animate(anim)
+                      : Tween<double>(begin: 0.5, end: 1).animate(anim),
+                  child: FadeTransition(opacity: anim, child: child)),
+              child: _isFabExpanded
+                  ? const Icon(Icons.close, key: ValueKey('icon1'), size: 28)
+                  : const Icon(Icons.menu, key: ValueKey('icon2'), size: 28),
+            ),
+          ),
+        ],
+      ));
 
-  Widget _buildLoadingScreen() {
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Theme.of(context).colorScheme.background,
-              Theme.of(context).colorScheme.primary.withOpacity(0.2),
-            ],
+  Widget _buildLoadingScreen() => Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Theme.of(context).colorScheme.background,
+                Theme.of(context).colorScheme.primary.withOpacity(0.2),
+              ],
+            ),
           ),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withOpacity(0.3),
-                        blurRadius: 50,
-                        spreadRadius: 10),
-                  ],
-                ),
-                child: const Icon(Icons.movie_filter,
-                        size: 72, color: Colors.white)
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .scale(
-                        begin: const Offset(0.95, 0.95),
-                        end: const Offset(1.05, 1.05),
-                        duration: 1.seconds),
-              ),
-              const SizedBox(height: 40),
-              Text(
-                _websites.isEmpty
-                    ? 'Mempersiapkan WebSpace...'
-                    : 'Memuat website terpilih...',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.bold, letterSpacing: 1.2),
-              ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.2, end: 0),
-              const SizedBox(height: 24),
-              const CircularProgressIndicator(color: Colors.white54),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorScreen() {
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.red.shade900.withOpacity(0.4),
-              Theme.of(context).colorScheme.background
-            ],
-          ),
-        ),
-        child: Center(
-          child: SingleChildScrollView(
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, size: 120, color: Colors.red.shade400)
-                    .animate()
-                    .shake(hz: 4, curve: Curves.easeInOut)
-                    .fadeIn(),
-                const SizedBox(height: 32),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Text(
-                    _errorMessage ?? 'Terjadi kesalahan tidak terduga',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ).animate().fadeIn(delay: 200.ms),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color:
+                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.3),
+                          blurRadius: 50,
+                          spreadRadius: 10),
+                    ],
+                  ),
+                  child: const Icon(Icons.movie_filter,
+                          size: 72, color: Colors.white)
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scale(
+                          begin: const Offset(0.95, 0.95),
+                          end: const Offset(1.05, 1.05),
+                          duration: 1.seconds),
                 ),
-                const SizedBox(height: 48),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _retry,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Coba Lagi',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 32, vertical: 16),
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
-                        elevation: 8,
-                      ),
-                    ).animate().scale(delay: 400.ms),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const ErrorLogsScreen()),
-                        ).then((_) {
-                          if (mounted) setState(() {});
-                        });
-                      },
-                      icon: const Icon(Icons.bug_report),
-                      label: const Text('Lihat Log',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange.shade800,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 32, vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
-                        elevation: 8,
-                      ),
-                    ).animate().scale(delay: 500.ms),
-                  ],
-                ),
+                const SizedBox(height: 40),
+                Text(
+                  _websites.isEmpty
+                      ? 'Mempersiapkan WebSpace...'
+                      : 'Memuat website terpilih...',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.2, end: 0),
+                const SizedBox(height: 24),
+                const CircularProgressIndicator(color: Colors.white54),
               ],
             ),
           ),
         ),
-      ),
-      floatingActionButton: _buildFloatingButtons(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-    );
-  }
+      );
+
+  Widget _buildErrorScreen() => Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.red.shade900.withOpacity(0.4),
+                Theme.of(context).colorScheme.background
+              ],
+            ),
+          ),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline,
+                          size: 120, color: Colors.red.shade400)
+                      .animate()
+                      .shake(hz: 4, curve: Curves.easeInOut)
+                      .fadeIn(),
+                  const SizedBox(height: 32),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                    child: Text(
+                      _errorMessage ?? 'Terjadi kesalahan tidak terduga',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ).animate().fadeIn(delay: 200.ms),
+                  ),
+                  const SizedBox(height: 48),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _retry,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Coba Lagi',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 32, vertical: 16),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30)),
+                          elevation: 8,
+                        ),
+                      ).animate().scale(delay: 400.ms),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const ErrorLogsScreen()),
+                          ).then((_) {
+                            if (mounted) setState(() {});
+                          });
+                        },
+                        icon: const Icon(Icons.bug_report),
+                        label: const Text('Lihat Log',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade800,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 32, vertical: 16),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30)),
+                          elevation: 8,
+                        ),
+                      ).animate().scale(delay: 500.ms),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        floatingActionButton: _buildFloatingButtons(),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -731,11 +722,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
 }
 
 class _DialogWebsiteItem extends StatefulWidget {
-  final WebsiteConfig website;
-  final WebsiteConfig? tempSelected;
-  final bool autofocus;
-  final ValueChanged<WebsiteConfig?> onSelected;
-
   const _DialogWebsiteItem({
     Key? key,
     required this.website,
@@ -743,6 +729,10 @@ class _DialogWebsiteItem extends StatefulWidget {
     required this.autofocus,
     required this.onSelected,
   }) : super(key: key);
+  final WebsiteConfig website;
+  final WebsiteConfig? tempSelected;
+  final bool autofocus;
+  final ValueChanged<WebsiteConfig?> onSelected;
 
   @override
   State<_DialogWebsiteItem> createState() => _DialogWebsiteItemState();
@@ -789,8 +779,10 @@ class _DialogWebsiteItemState extends State<_DialogWebsiteItem> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
-              : (isFocused ? Colors.white.withOpacity(0.1) : Colors.black26),
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
+              : (isFocused
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.black26),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected

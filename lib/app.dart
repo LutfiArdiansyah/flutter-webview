@@ -6,13 +6,13 @@ import 'screens/webview_screen.dart';
 
 /// Main application widget
 class WebSpaceApp extends StatelessWidget {
-  const WebSpaceApp({Key? key}) : super(key: key);
+  const WebSpaceApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     // Royal Green color matching Honda Stylo
-    const Color royalGreen = Color(0xFF1E4334);
-    
+    const royalGreen = Color(0xFF1E4334);
+
     return MaterialApp(
       title: AppConstants.appTitle,
       debugShowCheckedModeBanner: false,

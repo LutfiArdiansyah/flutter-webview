@@ -2,12 +2,6 @@ import 'package:intl/intl.dart';
 
 /// Error log entry
 class LogEntry {
-  final DateTime timestamp;
-  final String severity; // ERROR, WARNING, INFO
-  final String title;
-  final String message;
-  final String? stackTrace;
-
   LogEntry({
     required this.timestamp,
     required this.severity,
@@ -15,38 +9,44 @@ class LogEntry {
     required this.message,
     this.stackTrace,
   });
+  final DateTime timestamp;
+  final String severity; // ERROR, WARNING, INFO
+  final String title;
+  final String message;
+  final String? stackTrace;
 
   /// Format log entry as string
   String format() {
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
     final time = dateFormat.format(timestamp);
-    
+
     final buffer = StringBuffer();
     buffer.writeln('[$time] [$severity] $title');
     buffer.writeln('Message: $message');
-    
+
     if (stackTrace != null && stackTrace!.isNotEmpty) {
       buffer.writeln('\nStackTrace:');
       buffer.writeln(stackTrace);
     }
     buffer.writeln('---');
-    
+
     return buffer.toString();
   }
 }
 
 /// Error Logger Service - Singleton
 class ErrorLoggerService {
-  static final ErrorLoggerService _instance = ErrorLoggerService._internal();
-
-  final List<LogEntry> _logs = [];
-  static const int _maxLogs = 50; // Keep only last 50 logs
+  // Keep only last 50 logs
 
   factory ErrorLoggerService() {
     return _instance;
   }
 
   ErrorLoggerService._internal();
+  static final ErrorLoggerService _instance = ErrorLoggerService._internal();
+
+  final List<LogEntry> _logs = [];
+  static const int _maxLogs = 50;
 
   /// Log an error
   void logError(
@@ -139,9 +139,7 @@ class ErrorLoggerService {
   }
 
   /// Get error count
-  int getErrorCount() {
-    return _logs.where((log) => log.severity == 'ERROR').length;
-  }
+  int getErrorCount() => _logs.where((log) => log.severity == 'ERROR').length;
 
   /// Clear all logs
   void clearLogs() {
@@ -149,7 +147,5 @@ class ErrorLoggerService {
   }
 
   /// Get logs list (for UI)
-  List<LogEntry> getLogs() {
-    return List.unmodifiable(_logs.reversed);
-  }
+  List<LogEntry> getLogs() => List.unmodifiable(_logs.reversed);
 }
