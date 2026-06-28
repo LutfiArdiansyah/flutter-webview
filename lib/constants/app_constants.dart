@@ -39,5 +39,6 @@ class AppConstants {
   static const String invalidUrlErrorMessage = 'Invalid URL configuration.';
 
   /// Generic error message
-  static const String genericErrorMessage = 'Something went wrong. Please try again.';
+  static const String genericErrorMessage =
+      'Something went wrong. Please try again.';
 }

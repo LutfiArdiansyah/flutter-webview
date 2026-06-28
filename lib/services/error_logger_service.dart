@@ -20,13 +20,14 @@ class LogEntry {
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
     final time = dateFormat.format(timestamp);
 
-    final buffer = StringBuffer();
-    buffer.writeln('[$time] [$severity] $title');
-    buffer.writeln('Message: $message');
+    final buffer = StringBuffer()
+      ..writeln('[$time] [$severity] $title')
+      ..writeln('Message: $message');
 
     if (stackTrace != null && stackTrace!.isNotEmpty) {
-      buffer.writeln('\nStackTrace:');
-      buffer.writeln(stackTrace);
+      buffer
+        ..writeln('\nStackTrace:')
+        ..writeln(stackTrace);
     }
     buffer.writeln('---');
 
@@ -38,9 +39,7 @@ class LogEntry {
 class ErrorLoggerService {
   // Keep only last 50 logs
 
-  factory ErrorLoggerService() {
-    return _instance;
-  }
+  factory ErrorLoggerService() => _instance;
 
   ErrorLoggerService._internal();
   static final ErrorLoggerService _instance = ErrorLoggerService._internal();
@@ -115,28 +114,26 @@ class ErrorLoggerService {
       return 'No logs available';
     }
 
-    final buffer = StringBuffer();
-    buffer.writeln('=== ERROR LOG ===');
-    buffer.writeln('Generated: ${DateTime.now()}');
-    buffer.writeln('Total Errors: ${_logs.length}');
-    buffer.writeln('');
+    final buffer = StringBuffer()
+      ..writeln('=== ERROR LOG ===')
+      ..writeln('Generated: ${DateTime.now()}')
+      ..writeln('Total Errors: ${_logs.length}')
+      ..writeln('');
 
     for (final log in _logs) {
-      buffer.write(log.format());
-      buffer.writeln('');
+      buffer
+        ..write(log.format())
+        ..writeln('');
     }
 
     return buffer.toString();
   }
 
   /// Get latest error
-  LogEntry? getLatestError() {
-    try {
-      return _logs.lastWhere((log) => log.severity == 'ERROR');
-    } catch (e) {
-      return null;
-    }
-  }
+  LogEntry? getLatestError() => _logs.cast<LogEntry?>().lastWhere(
+        (log) => log?.severity == 'ERROR',
+        orElse: () => null,
+      );
 
   /// Get error count
   int getErrorCount() => _logs.where((log) => log.severity == 'ERROR').length;

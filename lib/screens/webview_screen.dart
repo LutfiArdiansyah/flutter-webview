@@ -4,9 +4,9 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../constants/app_constants.dart';
 import '../models/webview_config.dart';
@@ -56,7 +56,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_orientationInitialized) return;
+    if (_orientationInitialized) {
+      return;
+    }
     _isLandscapeMode =
         MediaQuery.of(context).orientation == Orientation.landscape;
     _orientationInitialized = true;
@@ -69,17 +71,27 @@ class _WebViewScreenState extends State<WebViewScreen> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            if (!mounted) return;
-            setState(() => _isLoadingWebView = true);
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _isLoadingWebView = true;
+            });
           },
           onPageFinished: (String url) {
-            if (!mounted) return;
-            setState(() => _isLoadingWebView = false);
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _isLoadingWebView = false;
+            });
             _webViewFocusNode.requestFocus();
           },
           onWebResourceError: (WebResourceError error) {
             final isMainFrame = error.isForMainFrame ?? false;
-            if (!isMainFrame) return;
+            if (!isMainFrame) {
+              return;
+            }
 
             if (error.description.contains('ERR_CONNECTION_REFUSED') ||
                 error.description.contains('ERR_ABORTED')) {
@@ -103,17 +115,19 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
     // Performance tweaks specifically for Android TV (e.g. Media playback)
     if (_webViewController.platform is AndroidWebViewController) {
-      final androidController =
-          _webViewController.platform as AndroidWebViewController;
-      // Allow media to auto-play without requiring user interaction (vital for Anime streaming)
-      androidController.setMediaPlaybackRequiresUserGesture(false);
+      // Allow media to auto-play without requiring user interaction
+      // (vital for Anime streaming)
+      (_webViewController.platform as AndroidWebViewController)
+          .setMediaPlaybackRequiresUserGesture(false);
     }
   }
 
   Future<void> _loadWebsites() async {
     try {
       final websites = await _urlLoaderService.fetchWebsites();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _websites = websites;
@@ -124,13 +138,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showWebsiteSelectionDialog();
       });
-    } catch (e) {
+    } on Exception catch (e) {
       _handleError(e);
     }
   }
 
   Future<void> _showWebsiteSelectionDialog() async {
-    if (!mounted || _selectionDialogVisible || _websites.isEmpty) return;
+    if (!mounted || _selectionDialogVisible || _websites.isEmpty) {
+      return;
+    }
 
     _selectionDialogVisible = true;
 
@@ -143,126 +159,128 @@ class _WebViewScreenState extends State<WebViewScreen> {
       builder: (dialogContext) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              child: Container(
-                constraints:
-                    const BoxConstraints(maxWidth: 500, maxHeight: 600),
-                decoration: BoxDecoration(
-                  color:
-                      Theme.of(context).colorScheme.surface.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
-                        blurRadius: 40,
-                        spreadRadius: 10),
-                  ],
+          builder: (context, setDialogState) => Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surface
+                    .withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.1),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Icon(Icons.movie_filter,
-                                color: Theme.of(context).colorScheme.primary),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 40,
+                    spreadRadius: 10,
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(width: 16),
-                          Text(
-                            AppConstants.appSelectionTitle,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
+                          child: Icon(Icons.movie_filter,
+                              color: Theme.of(context).colorScheme.primary),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          AppConstants.appSelectionTitle,
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ],
                     ),
-                    const Divider(height: 1, color: Colors.white12),
-                    Flexible(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                        itemCount: _websites.length,
-                        itemBuilder: (context, i) {
-                          return _DialogWebsiteItem(
-                            website: _websites[i],
-                            tempSelected: tempSelected,
-                            autofocus: i == 0,
-                            onSelected: (value) {
-                              setDialogState(() => tempSelected = value);
-                            },
-                          );
+                  ),
+                  const Divider(height: 1, color: Colors.white12),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      itemCount: _websites.length,
+                      itemBuilder: (context, i) => _DialogWebsiteItem(
+                        website: _websites[i],
+                        tempSelected: tempSelected,
+                        autofocus: i == 0,
+                        onSelected: (value) {
+                          setDialogState(() {
+                            tempSelected = value;
+                          });
                         },
                       ),
                     ),
-                    const Divider(height: 1, color: Colors.white12),
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
+                  ),
+                  const Divider(height: 1, color: Colors.white12),
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const TextButton(
+                          onPressed: SystemNavigator.pop,
+                          child: Text('Keluar',
+                              style: TextStyle(color: Colors.redAccent)),
+                        ),
+                        const Spacer(),
+                        if (_selectedWebsite != null)
                           TextButton(
-                            onPressed: () => SystemNavigator.pop(),
-                            child: const Text('Keluar',
-                                style: TextStyle(color: Colors.redAccent)),
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('Batal',
+                                style: TextStyle(color: Colors.white70)),
                           ),
-                          const Spacer(),
-                          if (_selectedWebsite != null)
-                            TextButton(
-                              onPressed: () => Navigator.pop(dialogContext),
-                              child: const Text('Batal',
-                                  style: TextStyle(color: Colors.white70)),
-                            ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            onPressed: tempSelected == null
-                                ? null
-                                : () =>
-                                    Navigator.pop(dialogContext, tempSelected),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.primary,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 32, vertical: 16),
-                              elevation: 8,
-                              shadowColor: Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.5),
-                            ),
-                            child: const Text(AppConstants.openButtonLabel,
-                                style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: tempSelected == null
+                              ? null
+                              : () =>
+                                  Navigator.pop(dialogContext, tempSelected),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 32, vertical: 16),
+                            elevation: 8,
+                            shadowColor: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withValues(alpha: 0.5),
                           ),
-                        ],
-                      ),
+                          child: const Text(AppConstants.openButtonLabel,
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              )
-                  .animate()
-                  .scale(curve: Curves.easeOutBack, duration: 400.ms)
-                  .fadeIn(),
-            );
-          },
+                  ),
+                ],
+              ),
+            )
+                .animate()
+                .scale(curve: Curves.easeOutBack, duration: 400.ms)
+                .fadeIn(),
+          ),
         ),
       ),
     );
@@ -303,8 +321,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
     _errorLogger.logError('WebView Loading Error', errorMsg,
         stackTrace: error.description);
-    if (!mounted) return;
-    setState(() => _isLoadingWebView = false);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLoadingWebView = false;
+    });
   }
 
   void _handleError(Object error) {
@@ -330,7 +352,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
     }
 
     _errorLogger.logError(errorTitle, errorMsg, stackTrace: error.toString());
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _errorMessage = errorMsg;
       _isLoadingUrl = false;
@@ -357,12 +381,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
         : const [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown];
 
     await SystemChrome.setPreferredOrientations(orientations);
-    if (!mounted) return;
-    setState(() => _isLandscapeMode = targetLandscape);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLandscapeMode = targetLandscape;
+    });
   }
 
   Widget _buildFloatingButtons() => Padding(
-      padding: const EdgeInsets.only(bottom: 30.0),
+      padding: const EdgeInsets.only(bottom: 30),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -463,8 +491,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Theme.of(context).colorScheme.background,
-                Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                Theme.of(context).colorScheme.surface,
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
               ],
             ),
           ),
@@ -476,14 +504,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.1),
                     boxShadow: [
                       BoxShadow(
                           color: Theme.of(context)
                               .colorScheme
                               .primary
-                              .withOpacity(0.3),
+                              .withValues(alpha: 0.3),
                           blurRadius: 50,
                           spreadRadius: 10),
                     ],
@@ -519,8 +549,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.red.shade900.withOpacity(0.4),
-                Theme.of(context).colorScheme.background
+                Colors.red.shade900.withValues(alpha: 0.4),
+                Theme.of(context).colorScheme.surface
               ],
             ),
           ),
@@ -574,7 +604,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                             MaterialPageRoute(
                                 builder: (context) => const ErrorLogsScreen()),
                           ).then((_) {
-                            if (mounted) setState(() {});
+                            if (mounted) {
+                              setState(() {});
+                            }
                           });
                         },
                         icon: const Icon(Icons.bug_report),
@@ -603,13 +635,19 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_errorMessage != null) return _buildErrorScreen();
-    if (_isLoadingUrl || _selectedWebsite == null) return _buildLoadingScreen();
+    if (_errorMessage != null) {
+      return _buildErrorScreen();
+    }
+    if (_isLoadingUrl || _selectedWebsite == null) {
+      return _buildLoadingScreen();
+    }
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
+        if (didPop) {
+          return;
+        }
 
         if (await _webViewController.canGoBack()) {
           await _webViewController.goBack();
@@ -620,24 +658,30 @@ class _WebViewScreenState extends State<WebViewScreen> {
         if (_lastBackPressed == null ||
             now.difference(_lastBackPressed!) > const Duration(seconds: 2)) {
           _lastBackPressed = now;
-          if (mounted) {
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                SnackBar(
-                  content: const Text('Tekan sekali lagi untuk keluar',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  backgroundColor: Theme.of(context).colorScheme.surface,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
+          if (!mounted) {
+            return;
           }
+          final messenger = ScaffoldMessenger.of(context);
+          final surfaceColor = Theme.of(context).colorScheme.surface;
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Tekan sekali lagi untuk keluar',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                backgroundColor: surfaceColor,
+                duration: const Duration(seconds: 2),
+              ),
+            );
           return;
         }
-        SystemNavigator.pop();
+        await SystemNavigator.pop();
       },
       child: Scaffold(
         appBar: _errorLogger.getErrorCount() > 0
@@ -660,7 +704,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                   builder: (context) =>
                                       const ErrorLogsScreen()),
                             ).then((_) {
-                              if (mounted) setState(() {});
+                              if (mounted) {
+                                setState(() {});
+                              }
                             });
                           },
                           tooltip: 'View error logs',
@@ -723,12 +769,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
 class _DialogWebsiteItem extends StatefulWidget {
   const _DialogWebsiteItem({
-    Key? key,
     required this.website,
     required this.tempSelected,
     required this.autofocus,
     required this.onSelected,
-  }) : super(key: key);
+  });
   final WebsiteConfig website;
   final WebsiteConfig? tempSelected;
   final bool autofocus;
@@ -750,8 +795,9 @@ class _DialogWebsiteItemState extends State<_DialogWebsiteItem> {
 
   @override
   void dispose() {
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
+    _focusNode
+      ..removeListener(_onFocusChange)
+      ..dispose();
     super.dispose();
   }
 

@@ -11,11 +11,11 @@ class WebsiteConfig {
     final name = json['website_name'] as String?;
     final url = json['webview_url'] as String?;
     if (name == null || name.isEmpty) {
-      throw FormatException('website_name is required in configuration');
+      throw const FormatException('website_name is required in configuration');
     }
 
     if (url == null || url.isEmpty) {
-      throw FormatException('webview_url is required in configuration');
+      throw const FormatException('webview_url is required in configuration');
     }
 
     return WebsiteConfig(

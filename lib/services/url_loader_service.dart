@@ -94,7 +94,7 @@ class UrlLoaderService {
       return uri.hasScheme &&
           (uri.scheme == 'http' || uri.scheme == 'https') &&
           uri.host.isNotEmpty;
-    } catch (e) {
+    } on Exception {
       return false;
     }
   }

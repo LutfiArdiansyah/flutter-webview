@@ -21,10 +21,15 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
       final logs = _loggerService.getAllLogs();
       await Clipboard.setData(ClipboardData(text: logs));
 
-      setState(() => _copySuccess = true);
+      setState(() {
+        _copySuccess = true;
+      });
 
       // Show success message
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('✓ Logs copied to clipboard'),
@@ -38,8 +43,11 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
       if (mounted) {
         setState(() => _copySuccess = false);
       }
-    } catch (e) {
-      if (!mounted) return;
+    } on Exception catch (e) {
+      if (!mounted) {
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error copying logs: $e'),
@@ -295,6 +303,10 @@ class _LogCard extends StatelessWidget {
   }
 
   /// Format time to HH:mm:ss
-  String _formatTime(DateTime dateTime) =>
-      '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
+  String _formatTime(DateTime dateTime) {
+    final h = dateTime.hour.toString().padLeft(2, '0');
+    final m = dateTime.minute.toString().padLeft(2, '0');
+    final s = dateTime.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
 }

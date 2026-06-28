@@ -26,8 +26,7 @@ class WebSpaceApp extends StatelessWidget {
           onPrimary: Colors.white,
           secondary: const Color(0xFFC0A062), // Elegant gold accent
           onSecondary: Colors.black,
-          surface: const Color(0xFF121212),
-          background: const Color(0xFF0A0A0A),
+          surface: const Color(0xFF0A0A0A),
         ),
         useMaterial3: true,
         textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
