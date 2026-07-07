@@ -178,12 +178,26 @@ class _WebViewScreenState extends State<WebViewScreen> {
               tempSelected = _websites.isNotEmpty ? _websites.first : null;
             }
 
+            // Use MediaQuery so the dialog always fits inside the physical
+            // screen regardless of device size or pixel density.
+            final screenHeight = MediaQuery.of(context).size.height;
+            final maxDialogHeight = (screenHeight * 0.82).clamp(300.0, 600.0);
+
             return Dialog(
               backgroundColor: Colors.transparent,
               elevation: 0,
+              alignment: Alignment.center,
+              // insetPadding guarantees a safe margin from all screen edges
+              // and prevents the dialog from ever overflowing the viewport.
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               child: Container(
+                // width: double.infinity makes the container always fill the
+                // available width (bounded by insetPadding + maxWidth) so the
+                // dialog stays centered and looks consistent on all devices.
+                width: double.infinity,
                 constraints:
-                    const BoxConstraints(maxWidth: 500, maxHeight: 600),
+                    BoxConstraints(maxWidth: 500, maxHeight: maxDialogHeight),
                 decoration: BoxDecoration(
                   color: Theme.of(context)
                       .colorScheme
@@ -230,32 +244,56 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           const Spacer(),
-                          IconButton(
-                            icon: _isLoadingUrl
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white70,
-                                    ),
-                                  )
-                                : const Icon(Icons.sync,
-                                    color: Colors.blueAccent),
-                            tooltip: 'Sync Online',
-                            onPressed: _isLoadingUrl
-                                ? null
-                                : () => _syncWebsites(setDialogState),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add,
-                                color: Colors.greenAccent),
-                            tooltip: 'Tambah Custom',
-                            onPressed: _isLoadingUrl
-                                ? null
-                                : () => _showAddEditWebsiteDialog(
-                                    context, null, setDialogState),
-                          ),
+                          if (_isLoadingUrl)
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white70,
+                              ),
+                            )
+                          else
+                            PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert,
+                                  color: Colors.white70),
+                              tooltip: 'Opsi',
+                              color: const Color(0xFF1E1E2E),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              onSelected: (value) {
+                                if (value == 'sync') {
+                                  _syncWebsites(setDialogState);
+                                } else if (value == 'add') {
+                                  _showAddEditWebsiteDialog(
+                                      context, null, setDialogState);
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                const PopupMenuItem(
+                                  value: 'sync',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.sync,
+                                          color: Colors.blueAccent, size: 20),
+                                      SizedBox(width: 12),
+                                      Text('Sync Online'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'add',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.add,
+                                          color: Colors.greenAccent, size: 20),
+                                      SizedBox(width: 12),
+                                      Text('Tambah Website'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                         ],
                       ),
                     ),
@@ -818,7 +856,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Widget _buildFloatingButtons() => Padding(
-      padding: const EdgeInsets.only(bottom: 30),
+      padding: const EdgeInsets.only(bottom: 40),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
