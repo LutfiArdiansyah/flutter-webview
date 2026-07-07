@@ -11,6 +11,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../constants/app_constants.dart';
 import '../models/webview_config.dart';
 import '../screens/error_logs_screen.dart';
+import '../services/database_service.dart';
 import '../services/error_logger_service.dart';
 import '../services/url_loader_service.dart';
 
@@ -26,6 +27,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
   late final WebViewController _webViewController;
   final UrlLoaderService _urlLoaderService = UrlLoaderService();
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
+  final DatabaseService _databaseService = DatabaseService();
   final FocusNode _webViewFocusNode = FocusNode();
 
   List<WebsiteConfig> _websites = [];
@@ -124,7 +126,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   Future<void> _loadWebsites() async {
     try {
-      final websites = await _urlLoaderService.fetchWebsites();
+      var websites = await _databaseService.getWebsites();
+
+      if (websites.isEmpty) {
+        final remoteWebsites = await _urlLoaderService.fetchWebsites();
+        await _databaseService.syncDefaultWebsites(remoteWebsites);
+        websites = await _databaseService.getWebsites();
+      }
+
       if (!mounted) {
         return;
       }
@@ -159,128 +168,196 @@ class _WebViewScreenState extends State<WebViewScreen> {
       builder: (dialogContext) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: StatefulBuilder(
-          builder: (context, setDialogState) => Dialog(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
-              decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .surface
-                    .withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    blurRadius: 40,
-                    spreadRadius: 10,
+          builder: (context, setDialogState) {
+            // Keep tempSelected in sync with available websites
+            if (tempSelected == null && _websites.isNotEmpty) {
+              tempSelected = _websites.first;
+            } else if (tempSelected != null &&
+                !_websites
+                    .any((w) => w.webviewUrl == tempSelected!.webviewUrl)) {
+              tempSelected = _websites.isNotEmpty ? _websites.first : null;
+            }
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: Container(
+                constraints:
+                    const BoxConstraints(maxWidth: 500, maxHeight: 600),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surface
+                      .withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
                   ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Icon(Icons.movie_filter,
-                              color: Theme.of(context).colorScheme.primary),
-                        ),
-                        const SizedBox(width: 16),
-                        Text(
-                          AppConstants.appSelectionTitle,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 40,
+                      spreadRadius: 10,
                     ),
-                  ),
-                  const Divider(height: 1, color: Colors.white12),
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      itemCount: _websites.length,
-                      itemBuilder: (context, i) => _DialogWebsiteItem(
-                        website: _websites[i],
-                        tempSelected: tempSelected,
-                        autofocus: i == 0,
-                        onSelected: (value) {
-                          setDialogState(() {
-                            tempSelected = value;
-                          });
-                        },
+                          horizontal: 24, vertical: 16),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(Icons.movie_filter,
+                                color: Theme.of(context).colorScheme.primary),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            AppConstants.appSelectionTitle,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: _isLoadingUrl
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white70,
+                                    ),
+                                  )
+                                : const Icon(Icons.sync,
+                                    color: Colors.blueAccent),
+                            tooltip: 'Sync Online',
+                            onPressed: _isLoadingUrl
+                                ? null
+                                : () => _syncWebsites(setDialogState),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add,
+                                color: Colors.greenAccent),
+                            tooltip: 'Tambah Custom',
+                            onPressed: _isLoadingUrl
+                                ? null
+                                : () => _showAddEditWebsiteDialog(
+                                    context, null, setDialogState),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const Divider(height: 1, color: Colors.white12),
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        const TextButton(
-                          onPressed: SystemNavigator.pop,
-                          child: Text('Keluar',
-                              style: TextStyle(color: Colors.redAccent)),
-                        ),
-                        const Spacer(),
-                        if (_selectedWebsite != null)
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext),
-                            child: const Text('Batal',
-                                style: TextStyle(color: Colors.white70)),
-                          ),
-                        const SizedBox(width: 12),
-                        ElevatedButton(
-                          onPressed: tempSelected == null
-                              ? null
-                              : () =>
-                                  Navigator.pop(dialogContext, tempSelected),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16)),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 32, vertical: 16),
-                            elevation: 8,
-                            shadowColor: Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.5),
-                          ),
-                          child: const Text(AppConstants.openButtonLabel,
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ],
+                    const Divider(height: 1, color: Colors.white12),
+                    Flexible(
+                      child: _isLoadingUrl
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(40),
+                                child: CircularProgressIndicator(),
+                              ),
+                            )
+                          : _websites.isEmpty
+                              ? const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(40),
+                                    child: Text(
+                                      'Tidak ada website tersedia.\n'
+                                      'Klik Sync Online untuk mengunduh.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.white70),
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 12),
+                                  itemCount: _websites.length,
+                                  itemBuilder: (context, i) =>
+                                      _DialogWebsiteItem(
+                                    website: _websites[i],
+                                    tempSelected: tempSelected,
+                                    autofocus: i == 0,
+                                    onSelected: (value) {
+                                      setDialogState(() {
+                                        tempSelected = value;
+                                      });
+                                    },
+                                    onEdit: () {
+                                      _showAddEditWebsiteDialog(context,
+                                          _websites[i], setDialogState);
+                                    },
+                                    onDelete: () {
+                                      _showDeleteConfirmDialog(context,
+                                          _websites[i], setDialogState);
+                                    },
+                                  ),
+                                ),
                     ),
-                  ),
-                ],
-              ),
-            )
-                .animate()
-                .scale(curve: Curves.easeOutBack, duration: 400.ms)
-                .fadeIn(),
-          ),
+                    const Divider(height: 1, color: Colors.white12),
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          const TextButton(
+                            onPressed: SystemNavigator.pop,
+                            child: Text('Keluar',
+                                style: TextStyle(color: Colors.redAccent)),
+                          ),
+                          const Spacer(),
+                          if (_selectedWebsite != null)
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Batal',
+                                  style: TextStyle(color: Colors.white70)),
+                            ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: tempSelected == null || _isLoadingUrl
+                                ? null
+                                : () =>
+                                    Navigator.pop(dialogContext, tempSelected),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 32, vertical: 16),
+                              elevation: 8,
+                              shadowColor: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.5),
+                            ),
+                            child: const Text(AppConstants.openButtonLabel,
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+                  .animate()
+                  .scale(curve: Curves.easeOutBack, duration: 400.ms)
+                  .fadeIn(),
+            );
+          },
         ),
       ),
     );
@@ -303,6 +380,357 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
     await _webViewController.loadRequest(Uri.parse(selectedWebsite.webviewUrl));
     _webViewFocusNode.requestFocus();
+  }
+
+  Future<void> _syncWebsites(StateSetter setDialogState) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    try {
+      setDialogState(() {
+        _isLoadingUrl = true;
+      });
+
+      final remoteWebsites = await _urlLoaderService.fetchWebsites();
+      await _databaseService.syncDefaultWebsites(remoteWebsites);
+      final updatedWebsites = await _databaseService.getWebsites();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _websites = updatedWebsites;
+      });
+
+      setDialogState(() {
+        _isLoadingUrl = false;
+      });
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Berhasil sinkronisasi website online!',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          backgroundColor: primaryColor,
+        ),
+      );
+    } on Exception catch (e) {
+      _errorLogger.logError('Sync Error', e.toString());
+      if (!mounted) {
+        return;
+      }
+
+      setDialogState(() {
+        _isLoadingUrl = false;
+      });
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Gagal sinkronisasi: $e',
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  void _showAddEditWebsiteDialog(
+    BuildContext context,
+    WebsiteConfig? existing,
+    StateSetter setDialogState,
+  ) {
+    final formKey = GlobalKey<FormState>();
+    final nameController =
+        TextEditingController(text: existing?.websiteName ?? '');
+    final urlController =
+        TextEditingController(text: existing?.webviewUrl ?? '');
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 450),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 40,
+                    spreadRadius: 10,
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            existing == null
+                                ? Icons.add_to_home_screen
+                                : Icons.edit,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            existing == null
+                                ? 'Tambah Website Kustom'
+                                : 'Edit Website Kustom',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      TextFormField(
+                        controller: nameController,
+                        maxLength: 50,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Nama Website',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.white30),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.white12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Nama website tidak boleh kosong';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: urlController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'URL Website',
+                          labelStyle: const TextStyle(color: Colors.white70),
+                          hintText: 'https://example.com',
+                          hintStyle: const TextStyle(color: Colors.white30),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.white30),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.white12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'URL tidak boleh kosong';
+                          }
+                          final urlPattern = RegExp(
+                            r'^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$',
+                            caseSensitive: false,
+                          );
+                          if (!urlPattern.hasMatch(value)) {
+                            return 'Format URL tidak valid';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('Batal',
+                                style: TextStyle(color: Colors.white70)),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: () async {
+                              if (formKey.currentState!.validate()) {
+                                final name = nameController.text.trim();
+                                var url = urlController.text.trim();
+                                if (!url.startsWith('http://') &&
+                                    !url.startsWith('https://')) {
+                                  url = 'https://$url';
+                                }
+
+                                if (existing == null) {
+                                  final newSite = WebsiteConfig(
+                                    websiteName: name,
+                                    webviewUrl: url,
+                                    isCustom: true,
+                                  );
+                                  await _databaseService.insertWebsite(newSite);
+                                } else {
+                                  final updatedSite = WebsiteConfig(
+                                    id: existing.id,
+                                    websiteName: name,
+                                    webviewUrl: url,
+                                    version: existing.version,
+                                    isCustom: true,
+                                  );
+                                  await _databaseService
+                                      .updateWebsite(updatedSite);
+                                }
+
+                                final updatedWebsites =
+                                    await _databaseService.getWebsites();
+                                if (!mounted) {
+                                  return;
+                                }
+
+                                setState(() {
+                                  _websites = updatedWebsites;
+                                });
+
+                                setDialogState(() {});
+
+                                if (!dialogContext.mounted) {
+                                  return;
+                                }
+                                Navigator.pop(dialogContext);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                            ),
+                            child: Text(existing == null ? 'Tambah' : 'Simpan'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeleteConfirmDialog(
+    BuildContext context,
+    WebsiteConfig website,
+    StateSetter setDialogState,
+  ) {
+    if (website.id == null) {
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: AlertDialog(
+            backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: const BorderSide(color: Colors.white10),
+            ),
+            title: const Text('Hapus Website',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
+            content: Text(
+              'Apakah Anda yakin ingin menghapus "${website.websiteName}"?',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Batal',
+                    style: TextStyle(color: Colors.white70)),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  await _databaseService.deleteWebsite(website.id!);
+                  final updatedWebsites = await _databaseService.getWebsites();
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  setState(() {
+                    _websites = updatedWebsites;
+                    if (_selectedWebsite?.id == website.id) {
+                      _selectedWebsite = null;
+                    }
+                  });
+
+                  setDialogState(() {});
+
+                  if (!dialogContext.mounted) {
+                    return;
+                  }
+                  Navigator.pop(dialogContext);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Hapus'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _handleWebViewError(WebResourceError error) {
@@ -649,6 +1077,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
           return;
         }
 
+        final messenger = ScaffoldMessenger.of(context);
+        final surfaceColor = Theme.of(context).colorScheme.surface;
+
         if (await _webViewController.canGoBack()) {
           await _webViewController.goBack();
           return;
@@ -658,18 +1089,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
         if (_lastBackPressed == null ||
             now.difference(_lastBackPressed!) > const Duration(seconds: 2)) {
           _lastBackPressed = now;
-          if (!mounted) {
-            return;
-          }
-          final messenger = ScaffoldMessenger.of(context);
-          final surfaceColor = Theme.of(context).colorScheme.surface;
           messenger
             ..hideCurrentSnackBar()
             ..showSnackBar(
               SnackBar(
                 content: const Text(
                   'Tekan sekali lagi untuk keluar',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(
@@ -773,11 +1200,15 @@ class _DialogWebsiteItem extends StatefulWidget {
     required this.tempSelected,
     required this.autofocus,
     required this.onSelected,
+    this.onEdit,
+    this.onDelete,
   });
   final WebsiteConfig website;
   final WebsiteConfig? tempSelected;
   final bool autofocus;
   final ValueChanged<WebsiteConfig?> onSelected;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   @override
   State<_DialogWebsiteItem> createState() => _DialogWebsiteItemState();
@@ -811,78 +1242,107 @@ class _DialogWebsiteItemState extends State<_DialogWebsiteItem> {
     final isSelected = widget.tempSelected == website;
     final isFocused = _isFocused;
 
-    return InkWell(
-      focusNode: _focusNode,
-      autofocus: widget.autofocus,
-      onTap: () {
-        _focusNode.requestFocus();
-        widget.onSelected(website);
-      },
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
+            : (isFocused
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black26),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
           color: isSelected
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
-              : (isFocused
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.black26),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary
-                : (isFocused ? Colors.white54 : Colors.white12),
-            width: isSelected || isFocused ? 2 : 1,
+              ? Theme.of(context).colorScheme.primary
+              : (isFocused ? Colors.white54 : Colors.white12),
+          width: isSelected || isFocused ? 2 : 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              focusNode: _focusNode,
+              autofocus: widget.autofocus,
+              onTap: () {
+                _focusNode.requestFocus();
+                widget.onSelected(website);
+              },
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(15),
+                bottomLeft: const Radius.circular(15),
+                topRight:
+                    website.isCustom ? Radius.zero : const Radius.circular(15),
+                bottomRight:
+                    website.isCustom ? Radius.zero : const Radius.circular(15),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.white10,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isSelected ? Icons.check : Icons.public,
+                        color: isSelected ? Colors.white : Colors.white54,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            website.websiteName,
+                            style: TextStyle(
+                              fontWeight: isSelected || isFocused
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            website.webviewUrl,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white60,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.white10,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                isSelected ? Icons.check : Icons.public,
-                color: isSelected ? Colors.white : Colors.white54,
-                size: 20,
-              ),
+          if (website.isCustom) ...[
+            IconButton(
+              icon: const Icon(Icons.edit_outlined,
+                  color: Colors.blueAccent, size: 20),
+              tooltip: 'Edit Website',
+              onPressed: widget.onEdit,
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    website.websiteName,
-                    style: TextStyle(
-                      fontWeight: isSelected || isFocused
-                          ? FontWeight.bold
-                          : FontWeight.normal,
-                      fontSize: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    website.webviewUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white60,
-                    ),
-                  ),
-                ],
-              ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline,
+                  color: Colors.redAccent, size: 20),
+              tooltip: 'Hapus Website',
+              onPressed: widget.onDelete,
             ),
+            const SizedBox(width: 8),
           ],
-        ),
+        ],
       ),
     );
   }
