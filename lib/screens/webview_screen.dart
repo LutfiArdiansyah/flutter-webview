@@ -856,7 +856,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
   }
 
   Widget _buildFloatingButtons() => Padding(
-      padding: const EdgeInsets.only(bottom: 40),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.sizeOf(context).height * 0.05,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
