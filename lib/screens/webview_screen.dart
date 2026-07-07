@@ -539,8 +539,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
                           const SizedBox(width: 12),
                           Text(
                             existing == null
-                                ? 'Tambah Website Kustom'
-                                : 'Edit Website Kustom',
+                                ? 'Tambah Website'
+                                : 'Edit Website',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
