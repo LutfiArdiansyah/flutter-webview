@@ -2,11 +2,15 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_windows/webview_windows.dart' as win_wv;
 
 import '../constants/app_constants.dart';
 import '../models/webview_config.dart';
@@ -24,7 +28,56 @@ class WebViewScreen extends StatefulWidget {
 }
 
 class _WebViewScreenState extends State<WebViewScreen> {
+  static const String _nestedScrollFixScript = r'''
+    (function () {
+      if (window.__webspaceScrollFixed) return;
+      window.__webspaceScrollFixed = true;
+
+      function findScrollableParent(el, deltaY) {
+        while (el && el !== document.documentElement) {
+          var style = window.getComputedStyle(el);
+          var oy = style.overflowY;
+          var scrollable =
+            (oy === 'auto' || oy === 'scroll') &&
+            el.scrollHeight > el.clientHeight;
+          if (scrollable) {
+            var atTop    = deltaY < 0 && el.scrollTop === 0;
+            var atBottom = deltaY > 0 &&
+              el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+            if (!atTop && !atBottom) return el;
+          }
+          el = el.parentElement;
+        }
+        return document.scrollingElement || document.documentElement;
+      }
+
+      // Dipanggil manual dari Flutter (workaround wheel-event routing
+      // yang tidak reliable di WebView2/webview_windows).
+      window.__webspaceScrollAt = function (x, y, dx, dy) {
+        var target = document.elementFromPoint(x, y);
+        if (!target) return;
+        var el = findScrollableParent(target, dy);
+        if (el) {
+          el.scrollTop += dy;
+          el.scrollLeft += dx;
+        }
+      };
+
+      // Tetap pasang listener wheel biasa untuk kasus di mana event
+      // memang sampai ke DOM (mis. beberapa versi WebView2 runtime).
+      document.addEventListener('wheel', function (e) {
+        if (e.defaultPrevented) return;
+        var target = findScrollableParent(e.target, e.deltaY);
+        if (target) {
+          target.scrollTop += e.deltaY;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+        }
+      }, { passive: false, capture: true });
+    })();
+  ''';
   late final WebViewController _webViewController;
+  win_wv.WebviewController? _winWebViewController;
   final UrlLoaderService _urlLoaderService = UrlLoaderService();
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
   final DatabaseService _databaseService = DatabaseService();
@@ -41,17 +94,30 @@ class _WebViewScreenState extends State<WebViewScreen> {
   bool _orientationInitialized = false;
 
   bool _isFabExpanded = false;
+  bool _isWinWebViewInitialized = false;
+  bool _winCanGoBack = false;
+  StreamSubscription? _winLoadingStateSub;
+  StreamSubscription? _winHistoryChangedSub;
 
   @override
   void initState() {
     super.initState();
-    _initializeWebView();
+    if (Platform.isWindows) {
+      _initializeWindowsWebView();
+    } else {
+      _initializeWebView();
+    }
     _loadWebsites();
   }
 
   @override
   void dispose() {
     _webViewFocusNode.dispose();
+    _winLoadingStateSub?.cancel();
+    _winHistoryChangedSub?.cancel();
+    if (Platform.isWindows) {
+      _winWebViewController?.dispose();
+    }
     super.dispose();
   }
 
@@ -88,6 +154,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
               _isLoadingWebView = false;
             });
             _webViewFocusNode.requestFocus();
+            _webViewController.runJavaScript(_nestedScrollFixScript);
           },
           onWebResourceError: (WebResourceError error) {
             final isMainFrame = error.isForMainFrame ?? false;
@@ -121,6 +188,112 @@ class _WebViewScreenState extends State<WebViewScreen> {
       // (vital for Anime streaming)
       (_webViewController.platform as AndroidWebViewController)
           .setMediaPlaybackRequiresUserGesture(false);
+    }
+  }
+
+  /// Initialize WebView for Windows using Microsoft Edge WebView2
+  Future<void> _initializeWindowsWebView() async {
+    try {
+      final webViewVersion = await win_wv.WebviewController.getWebViewVersion();
+      if (webViewVersion == null || webViewVersion.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'Microsoft Edge WebView2 Runtime tidak terdeteksi atau Windows versi ini tidak didukung.\n'
+                'Silakan unduh dan instal WebView2 Runtime dari situs resmi Microsoft untuk dapat menjalankan aplikasi ini di Windows.';
+            _isLoadingUrl = false;
+          });
+        }
+        return;
+      }
+
+      final appSupportDir = await getApplicationSupportDirectory();
+      final userDataFolder = p.join(appSupportDir.path, 'webview_cache');
+
+      try {
+        await win_wv.WebviewController.initializeEnvironment(
+          userDataPath: userDataFolder,
+        );
+      } on PlatformException catch (e) {
+        // If the environment was already initialized, we can ignore this error
+        _errorLogger.logError(
+            'Windows WebView environment init warning', e.toString());
+      }
+
+      final controller = win_wv.WebviewController();
+      await controller.initialize();
+
+      _winWebViewController = controller;
+
+      // Listen to loading state to show/hide loading indicator
+      // and inject scroll fix once navigation is complete.
+      _winLoadingStateSub = controller.loadingState.listen((state) {
+        if (!mounted) return;
+        setState(() {
+          _isLoadingWebView = state == win_wv.LoadingState.loading;
+        });
+        if (state == win_wv.LoadingState.navigationCompleted) {
+          _injectWindowsScrollFix(controller);
+        }
+      });
+
+      // Listen to history changes for back navigation
+      _winHistoryChangedSub = controller.historyChanged.listen((event) {
+        if (mounted) {
+          setState(() {
+            _winCanGoBack = event.canGoBack;
+          });
+        }
+      });
+
+      if (mounted) {
+        setState(() {
+          _isWinWebViewInitialized = true;
+        });
+      }
+    } catch (e) {
+      _errorLogger.logError(
+          'Windows WebView Initialization Error', e.toString());
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Gagal menginisialisasi WebView pada Windows.\n'
+              'Pastikan Windows Anda terupdate (Windows 10 1809 atau lebih baru) dan WebView2 Runtime telah terpasang.\n'
+              'Detail: $e';
+          _isLoadingUrl = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleWindowsPointerScroll(PointerScrollEvent event) async {
+    if (!_isWinWebViewInitialized || _winWebViewController == null) return;
+    final dx = event.scrollDelta.dx;
+    final dy = event.scrollDelta.dy;
+    final x = event.localPosition.dx;
+    final y = event.localPosition.dy;
+    try {
+      await _winWebViewController!.executeScript(
+        'window.__webspaceScrollAt && window.__webspaceScrollAt($x, $y, $dx, $dy);',
+      );
+    } catch (e) {
+      debugPrint('[WebSpace] scrollAt failed: $e');
+    }
+  }
+
+  /// Injects a JavaScript snippet into the Windows WebView that fixes mouse
+  /// wheel scrolling on nested overflow containers.
+  ///
+  /// WebView2 sometimes fails to route wheel events to child elements that
+  /// have their own scroll context (e.g. Kanban columns with overflow:auto).
+  /// The injected script walks up the DOM from the target element and
+  /// explicitly scrolls the first scrollable ancestor, preventing the event
+  /// from being silently swallowed.
+  Future<void> _injectWindowsScrollFix(
+      win_wv.WebviewController controller) async {
+    try {
+      await controller.executeScript(_nestedScrollFixScript);
+    } catch (e) {
+      debugPrint('[WebSpace] scroll fix injection skipped: $e');
     }
   }
 
@@ -350,9 +523,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          const TextButton(
-                            onPressed: SystemNavigator.pop,
-                            child: Text('Keluar',
+                          TextButton(
+                            onPressed: () {
+                              if (Platform.isWindows) {
+                                exit(0);
+                              } else {
+                                SystemNavigator.pop();
+                              }
+                            },
+                            child: const Text('Keluar',
                                 style: TextStyle(color: Colors.redAccent)),
                           ),
                           const Spacer(),
@@ -416,7 +595,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
       _isLoadingUrl = false;
     });
 
-    await _webViewController.loadRequest(Uri.parse(selectedWebsite.webviewUrl));
+    if (Platform.isWindows) {
+      if (_isWinWebViewInitialized && _winWebViewController != null) {
+        await _winWebViewController!.loadUrl(selectedWebsite.webviewUrl);
+      }
+    } else {
+      await _webViewController
+          .loadRequest(Uri.parse(selectedWebsite.webviewUrl));
+    }
     _webViewFocusNode.requestFocus();
   }
 
@@ -884,34 +1070,41 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     curve: Curves.easeOutBack)
                 .fadeIn(),
             const SizedBox(height: 16),
-            FloatingActionButton.extended(
-              heroTag: 'orientation-toggle',
-              onPressed: () {
-                setState(() => _isFabExpanded = false);
-                _toggleOrientation();
-              },
-              icon: Icon(_isLandscapeMode
-                  ? Icons.screen_lock_landscape
-                  : Icons.screen_lock_portrait),
-              label: Text(_isLandscapeMode ? 'Mode Landscape' : 'Mode Portrait',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              backgroundColor: Theme.of(context).colorScheme.secondary,
-              foregroundColor: Theme.of(context).colorScheme.onSecondary,
-            )
-                .animate()
-                .slideY(
-                    begin: 1,
-                    end: 0,
-                    duration: 250.ms,
-                    curve: Curves.easeOutBack,
-                    delay: 50.ms)
-                .fadeIn(),
-            const SizedBox(height: 16),
+            if (!Platform.isWindows) ...[
+              FloatingActionButton.extended(
+                heroTag: 'orientation-toggle',
+                onPressed: () {
+                  setState(() => _isFabExpanded = false);
+                  _toggleOrientation();
+                },
+                icon: Icon(_isLandscapeMode
+                    ? Icons.screen_lock_landscape
+                    : Icons.screen_lock_portrait),
+                label: Text(
+                    _isLandscapeMode ? 'Mode Landscape' : 'Mode Portrait',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: Theme.of(context).colorScheme.secondary,
+                foregroundColor: Theme.of(context).colorScheme.onSecondary,
+              )
+                  .animate()
+                  .slideY(
+                      begin: 1,
+                      end: 0,
+                      duration: 250.ms,
+                      curve: Curves.easeOutBack,
+                      delay: 50.ms)
+                  .fadeIn(),
+              const SizedBox(height: 16),
+            ],
             FloatingActionButton.extended(
               heroTag: 'exit-app',
               onPressed: () {
                 setState(() => _isFabExpanded = false);
-                SystemNavigator.pop();
+                if (Platform.isWindows) {
+                  exit(0);
+                } else {
+                  SystemNavigator.pop();
+                }
               },
               icon: const Icon(Icons.exit_to_app),
               label: const Text('Keluar',
@@ -1120,9 +1313,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
         final messenger = ScaffoldMessenger.of(context);
         final surfaceColor = Theme.of(context).colorScheme.surface;
 
-        if (await _webViewController.canGoBack()) {
-          await _webViewController.goBack();
-          return;
+        if (Platform.isWindows) {
+          if (_winCanGoBack && _winWebViewController != null) {
+            await _winWebViewController!.goBack();
+            return;
+          }
+        } else {
+          if (await _webViewController.canGoBack()) {
+            await _webViewController.goBack();
+            return;
+          }
         }
 
         final now = DateTime.now();
@@ -1148,7 +1348,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
             );
           return;
         }
-        await SystemNavigator.pop();
+        if (Platform.isWindows) {
+          exit(0);
+        } else {
+          await SystemNavigator.pop();
+        }
       },
       child: Scaffold(
         appBar: _errorLogger.getErrorCount() > 0
@@ -1212,7 +1416,18 @@ class _WebViewScreenState extends State<WebViewScreen> {
               Focus(
                 focusNode: _webViewFocusNode,
                 autofocus: true,
-                child: WebViewWidget(controller: _webViewController),
+                child: Platform.isWindows
+                    ? (_isWinWebViewInitialized
+                        ? Listener(
+                            onPointerSignal: (pointerSignal) {
+                              if (pointerSignal is PointerScrollEvent) {
+                                _handleWindowsPointerScroll(pointerSignal);
+                              }
+                            },
+                            child: win_wv.Webview(_winWebViewController!),
+                          )
+                        : const Center(child: CircularProgressIndicator()))
+                    : WebViewWidget(controller: _webViewController),
               ),
               if (_isLoadingWebView)
                 Positioned(

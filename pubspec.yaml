@@ -19,11 +19,36 @@ dependencies:
   sqflite: ^2.3.0
   webview_flutter: ^4.4.0
   webview_flutter_android: ^3.0.0
+  webview_windows: ^0.4.0
+  sqflite_common_ffi: ^2.3.0
+  path_provider: ^2.1.2
 
 dev_dependencies:
+  flutter_launcher_icons: "^0.13.1"
   flutter_lints: ^3.0.0
   flutter_test:
     sdk: flutter
+  msix: ^3.16.12
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icons/
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  windows:
+    generate: true
+    image_path: "assets/icons/logo.png"
+    icon_size: 256
+  image_path: "assets/icons/logo.png"
+  min_sdk_android: 21
+
+msix_config:
+  display_name: KctSpace
+  publisher_display_name: PT. Kreasindo Cipta Teknologi
+  identity_name: kct.co.id
+  msix_version: 1.0.0.0
+  logo_path: assets/icons/logo.png
+  capabilities: internetClient

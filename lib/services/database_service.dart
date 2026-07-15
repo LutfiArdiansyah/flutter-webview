@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/webview_config.dart';
 
@@ -23,10 +25,21 @@ class DatabaseService {
 
   /// Initialize SQLite database and create schemas
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final pathString = join(dbPath, 'webspace.db');
+    String pathString;
+    if (Platform.isWindows) {
+      final appSupportDir = await getApplicationSupportDirectory();
+      final dbDirectory = Directory(join(appSupportDir.path, 'databases'));
+      if (!await dbDirectory.exists()) {
+        await dbDirectory.create(recursive: true);
+      }
+      pathString = join(dbDirectory.path, 'webspace.db');
+    } else {
+      final dbPath = await getDatabasesPath();
+      pathString = join(dbPath, 'webspace.db');
+    }
 
     return openDatabase(
+
       pathString,
       version: 1,
       onCreate: (db, version) async {

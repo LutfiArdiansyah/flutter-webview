@@ -2,7 +2,7 @@
 class AppConstants {
   /// URL to fetch WebView configuration from
   static const String jsonUrl =
-      'https://raw.githubusercontent.com/LutfiArdiansyah/urlwebview-anime/refs/heads/main/url.json';
+      'https://raw.githubusercontent.com/LutfiArdiansyah/urlwebview-anime/refs/heads/main/kct.json';
 
   /// HTTP request timeout in seconds
   static const int requestTimeoutSeconds = 10;
