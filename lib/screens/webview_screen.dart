@@ -162,6 +162,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
     var tempSelected =
         _selectedWebsite ?? (_websites.isNotEmpty ? _websites.first : null);
 
+    String searchQuery = '';
+
     final selectedWebsite = await showDialog<WebsiteConfig>(
       context: context,
       barrierDismissible: true,
@@ -179,6 +181,12 @@ class _WebViewScreenState extends State<WebViewScreen> {
             }
 
             // Use MediaQuery so the dialog always fits inside the physical
+
+            final filteredWebsites = _websites.where((w) {
+              final query = searchQuery.toLowerCase();
+              return w.websiteName.toLowerCase().contains(query) ||
+                  w.webviewUrl.toLowerCase().contains(query);
+            }).toList();
             // screen regardless of device size or pixel density.
             final screenHeight = MediaQuery.of(context).size.height;
             final maxDialogHeight = (screenHeight * 0.82).clamp(300.0, 600.0);
@@ -298,6 +306,31 @@ class _WebViewScreenState extends State<WebViewScreen> {
                       ),
                     ),
                     const Divider(height: 1, color: Colors.white12),
+                    if (_websites.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: 'Cari website (nama atau url)...',
+                            hintStyle: const TextStyle(color: Colors.white54),
+                            prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                            filled: true,
+                            fillColor: Colors.black26,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                          ),
+                          style: const TextStyle(color: Colors.white),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              searchQuery = value;
+                            });
+                          },
+                        ),
+                      ),
+                    const Divider(height: 1, color: Colors.white12),
                     Flexible(
                       child: _isLoadingUrl
                           ? const Center(
@@ -318,31 +351,42 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                     ),
                                   ),
                                 )
-                              : ListView.builder(
-                                  shrinkWrap: true,
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 16, vertical: 12),
-                                  itemCount: _websites.length,
-                                  itemBuilder: (context, i) =>
-                                      _DialogWebsiteItem(
-                                    website: _websites[i],
-                                    tempSelected: tempSelected,
-                                    autofocus: i == 0,
-                                    onSelected: (value) {
-                                      setDialogState(() {
-                                        tempSelected = value;
-                                      });
-                                    },
-                                    onEdit: () {
-                                      _showAddEditWebsiteDialog(context,
-                                          _websites[i], setDialogState);
-                                    },
-                                    onDelete: () {
-                                      _showDeleteConfirmDialog(context,
-                                          _websites[i], setDialogState);
-                                    },
-                                  ),
-                                ),
+                              : filteredWebsites.isEmpty
+                                  ? const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(40),
+                                        child: Text(
+                                          'Tidak Ada Hasil',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(color: Colors.white70),
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.builder(
+                                      shrinkWrap: true,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 12),
+                                      itemCount: filteredWebsites.length,
+                                      itemBuilder: (context, i) =>
+                                          _DialogWebsiteItem(
+                                        website: filteredWebsites[i],
+                                        tempSelected: tempSelected,
+                                        autofocus: i == 0,
+                                        onSelected: (value) {
+                                          setDialogState(() {
+                                            tempSelected = value;
+                                          });
+                                        },
+                                        onEdit: () {
+                                          _showAddEditWebsiteDialog(context,
+                                              filteredWebsites[i], setDialogState);
+                                        },
+                                        onDelete: () {
+                                          _showDeleteConfirmDialog(context,
+                                              filteredWebsites[i], setDialogState);
+                                        },
+                                      ),
+                                    ),
                     ),
                     const Divider(height: 1, color: Colors.white12),
                     Padding(
@@ -855,6 +899,46 @@ class _WebViewScreenState extends State<WebViewScreen> {
     });
   }
 
+  Future<void> _clearCacheAndData() async {
+    setState(() {
+      _isLoadingWebView = true;
+      _isFabExpanded = false;
+    });
+
+    await _webViewController.clearCache();
+    await _webViewController.clearLocalStorage();
+    if (_webViewController.platform is AndroidWebViewController) {
+      await WebViewCookieManager().clearCookies();
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Cache dan Data berhasil dibersihkan',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
+
+    await _webViewController.reload();
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isLoadingWebView = false;
+    });
+  }
+
   Widget _buildFloatingButtons() => Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.sizeOf(context).height * 0.05,
@@ -864,6 +948,23 @@ class _WebViewScreenState extends State<WebViewScreen> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (_isFabExpanded) ...[
+            FloatingActionButton.extended(
+              heroTag: 'clear-cache',
+              onPressed: _clearCacheAndData,
+              icon: const Icon(Icons.cleaning_services),
+              label: const Text('Clear Cache',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              backgroundColor: Colors.orange.shade700,
+              foregroundColor: Colors.white,
+            )
+                .animate()
+                .slideY(
+                    begin: 1,
+                    end: 0,
+                    duration: 250.ms,
+                    curve: Curves.easeOutBack)
+                .fadeIn(),
+            const SizedBox(height: 16),
             FloatingActionButton.extended(
               heroTag: 'switch-website',
               onPressed: () {
