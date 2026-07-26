@@ -162,7 +162,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     var tempSelected =
         _selectedWebsite ?? (_websites.isNotEmpty ? _websites.first : null);
 
-    String searchQuery = '';
+    var searchQuery = '';
 
     final selectedWebsite = await showDialog<WebsiteConfig>(
       context: context,
@@ -308,19 +308,27 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     const Divider(height: 1, color: Colors.white12),
                     if (_websites.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         child: TextField(
                           decoration: InputDecoration(
                             hintText: 'Cari website (nama atau url)...',
                             hintStyle: const TextStyle(color: Colors.white54),
-                            prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: Colors.white54,
+                            ),
                             filled: true,
                             fillColor: Colors.black26,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide.none,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 0,
+                            ),
                           ),
                           style: const TextStyle(color: Colors.white),
                           onChanged: (value) {
@@ -358,7 +366,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                         child: Text(
                                           'Tidak Ada Hasil',
                                           textAlign: TextAlign.center,
-                                          style: TextStyle(color: Colors.white70),
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                          ),
                                         ),
                                       ),
                                     )
@@ -378,12 +388,18 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                           });
                                         },
                                         onEdit: () {
-                                          _showAddEditWebsiteDialog(context,
-                                              filteredWebsites[i], setDialogState);
+                                          _showAddEditWebsiteDialog(
+                                            context,
+                                            filteredWebsites[i],
+                                            setDialogState,
+                                          );
                                         },
                                         onDelete: () {
-                                          _showDeleteConfirmDialog(context,
-                                              filteredWebsites[i], setDialogState);
+                                          _showDeleteConfirmDialog(
+                                            context,
+                                            filteredWebsites[i],
+                                            setDialogState,
+                                          );
                                         },
                                       ),
                                     ),
@@ -924,7 +940,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
             style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
           ),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
           backgroundColor: Theme.of(context).colorScheme.primary,
         ),
       );
