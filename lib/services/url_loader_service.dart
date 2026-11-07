@@ -6,9 +6,12 @@ import 'package:http/http.dart' as http;
 
 import '../constants/app_constants.dart';
 import '../models/webview_config.dart';
+import 'error_logger_service.dart';
 
 /// Service to load website entries from remote JSON configuration
 class UrlLoaderService {
+  final ErrorLoggerService _errorLogger = ErrorLoggerService();
+
   /// Fetch website list from GitHub JSON
   ///
   /// Throws:
@@ -19,22 +22,25 @@ class UrlLoaderService {
   /// - [ArgumentError] if URL is invalid
   Future<List<WebsiteConfig>> fetchWebsites() async {
     try {
-      final response = await http.get(
-        Uri.parse(AppConstants.jsonUrl),
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'WebSpace/1.0',
-        },
-      ).timeout(
-        const Duration(seconds: AppConstants.requestTimeoutSeconds),
-        onTimeout: () => throw TimeoutException('URL fetch timeout'),
-      );
+      final response = await http
+          .get(
+            Uri.parse(AppConstants.jsonUrl),
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'WebSpace/1.0',
+            },
+          )
+          .timeout(
+            const Duration(seconds: AppConstants.requestTimeoutSeconds),
+            onTimeout: () => throw TimeoutException('URL fetch timeout'),
+          );
 
       if (response.statusCode == 200) {
         return _parseAndValidateResponse(response.body);
       } else {
         throw HttpException(
-            'HTTP ${response.statusCode}: Failed to fetch configuration');
+          'HTTP ${response.statusCode}: Failed to fetch configuration',
+        );
       }
     } on SocketException {
       rethrow;
@@ -54,7 +60,8 @@ class UrlLoaderService {
       final json = jsonDecode(responseBody);
       if (json is! List) {
         throw const FormatException(
-            'Expected a list of website configurations');
+          'Expected a list of website configurations',
+        );
       }
 
       final websites = <WebsiteConfig>[];
@@ -69,6 +76,8 @@ class UrlLoaderService {
           throw FormatException('Invalid URL: ${config.webviewUrl}');
         }
 
+        _warnAboutDroppedAllowedEntries(config.websiteName, item['allowed']);
+
         websites.add(config);
       }
 
@@ -82,6 +91,33 @@ class UrlLoaderService {
         rethrow;
       }
       throw FormatException('Failed to parse JSON: $e');
+    }
+  }
+
+  /// Logs `allowed` entries that were skipped, so config mistakes are
+  /// visible without rejecting the whole configuration.
+  void _warnAboutDroppedAllowedEntries(String websiteName, Object? rawAllowed) {
+    if (rawAllowed != null && rawAllowed is! List) {
+      _errorLogger.logWarning(
+        'Allowlist Config',
+        '"allowed" for $websiteName must be a list; ignored.',
+      );
+      return;
+    }
+    final parsed = WebsiteConfig.parseAllowedJson(rawAllowed);
+    if (parsed.invalidEntries.isNotEmpty) {
+      _errorLogger.logWarning(
+        'Allowlist Config',
+        'Invalid "allowed" entries for $websiteName ignored: '
+            '${parsed.invalidEntries.join(', ')}',
+      );
+    }
+    if (parsed.truncated) {
+      _errorLogger.logWarning(
+        'Allowlist Config',
+        '"allowed" for $websiteName exceeds '
+            '${AppConstants.maxAllowedHosts} entries; extra entries ignored.',
+      );
     }
   }
 

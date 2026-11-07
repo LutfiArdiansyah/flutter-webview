@@ -5,25 +5,34 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
+  sdk: ^3.13.0
 
 dependencies:
   flutter:
     sdk: flutter
 
   flutter_animate: ^4.5.2
-  google_fonts: ^6.3.2
-  http: ^1.1.0
-  intl: ^0.19.0
-  path: ^1.9.0
-  sqflite: ^2.3.0
-  webview_flutter: ^4.4.0
-  webview_flutter_android: ^3.0.0
+  flutter_inappwebview: 6.2.0-beta.3
+  google_fonts: ^9.0.0
+  http: ^1.6.0
+  intl: ^0.20.3
+  material_ui: ^1.8.0
+  path: ^1.9.1
+  sqflite: ^2.4.5
 
 dev_dependencies:
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
+  sqflite_common_ffi: ^2.4.5
 
 flutter:
   uses-material-design: true
+
+  # Poppins is bundled so text renders without a network fetch (see main.dart).
+  assets:
+    - assets/google_fonts/Poppins-Regular.ttf
+    - assets/google_fonts/Poppins-Medium.ttf
+    - assets/google_fonts/Poppins-SemiBold.ttf
+    - assets/google_fonts/Poppins-Bold.ttf
+    - assets/google_fonts/OFL.txt

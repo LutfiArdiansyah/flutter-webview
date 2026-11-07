@@ -5,7 +5,9 @@ A Flutter application that displays webview from remote JSON configuration. Supp
 ## Features
 
 - ✅ WebView from dynamic URL (loaded from GitHub JSON)
-- ✅ Support Android 4.4 KitKat (API 20) and above
+- ✅ Support Android 7.0 Nougat (API 24) and above
+- ✅ WebView cache, local storage, and cookies are cleared automatically on every app launch (saved website list is kept)
+- ✅ Landscape mode follows the device sensor and flips 180° like YouTube, even when system auto-rotate is locked (Android)
 - ✅ Support for Android Set Top Box (TV with Remote)
 - ✅ Error handling with retry mechanism
 - ✅ Loading states
@@ -14,9 +16,10 @@ A Flutter application that displays webview from remote JSON configuration. Supp
 
 ## Requirements
 
-- Flutter SDK: >= 3.0.0
-- Android SDK: minSdkVersion 20 (Android 4.4 KitKat)
-- Java 8 or higher
+- Flutter SDK: >= 3.47.0 (Dart >= 3.13.0)
+- Android SDK: minSdkVersion 24 (Android 7.0), compile/target SDK 36
+- Java 17 or higher
+- Android build: AGP 9.1.1, Gradle 9.3.1, Kotlin 2.4.0 (highest versions supported by Flutter 3.47.8)
 
 ## Setup & Installation
 
@@ -96,10 +99,49 @@ The JSON file should have this structure:
   {
     "webview_url": "https://example.com",
     "website_name": "Example",
-    "version": "1.0"
+    "version": "1.0",
+    "allowed": ["*.example.com", "accounts.google.com"]
   }
 ]
 ```
+
+### Navigation Allowlist (`allowed`)
+
+The WebView only opens the selected website, its subdomains (a leading
+`www.` is ignored) and the hosts listed in that website's optional `allowed`
+array. Everything else (ads, redirects, `intent:` links) is blocked. Old app
+versions ignore the field, and a missing/invalid `allowed` never rejects the
+configuration (invalid entries are skipped and logged as warnings).
+
+| Pattern | Matches |
+|---|---|
+| `host.com` | exactly `host.com` |
+| `*.host.com` | `host.com` and every subdomain |
+| `host.com/path/` | exactly `host.com`, only paths starting with `/path/` |
+
+No scheme, port, query or bare wildcards (`*`, `*.com`); at most 100 entries
+per website. Custom websites get the same list through the
+"Host yang diizinkan" field in the add/edit dialog.
+
+Standard entries for Google sign-in and captchas (add only to websites that
+need them):
+
+```json
+"accounts.google.com", "accounts.google.co.id", "accounts.youtube.com",
+"gds.google.com", "challenges.cloudflare.com", "www.google.com/recaptcha/",
+"recaptcha.net", "*.recaptcha.net", "*.hcaptcha.com"
+```
+
+Popups opened by the page (e.g. "Sign in with Google") are shown in a dialog
+when their URL is allowlisted; others are refused. Only one popup at a time.
+
+> **Google sign-in caveat:** Google blocks OAuth in embedded WebViews. While
+> on a Google account host the WebView sends its User-Agent without the
+> WebView markers. This works around Google policy and may stop working at
+> any time.
+
+Existing installs re-sync the remote list once in the background after the
+update so `allowed` takes effect without pressing "Sync Online".
 
 ### Customize Timeout
 
@@ -118,6 +160,19 @@ flutter build apk --release
 
 ### Build for Android Set Top Box (TV)
 Same as above. The app automatically handles landscape orientation for TV displays.
+
+For ARMv7 (32-bit) set-top boxes, build a per-ABI APK (≈16 MB instead of ≈52 MB,
+only `armeabi-v7a` native libraries):
+```bash
+flutter build apk --release --split-per-abi --target-platform android-arm
+# build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+```
+
+**Low-end profile:** on 32-bit ARM processes, Android low-RAM devices, or
+devices with less than 2 GB RAM, dialogs skip the backdrop blur, shadows use
+a small blur, and the loading pulse plays once. Other devices look unchanged.
+Fonts (Poppins) are bundled in `assets/google_fonts/` and never downloaded at
+runtime.
 
 ### Build for iOS
 ```bash
@@ -147,16 +202,23 @@ flutter build apk --release
 - Verify JSON URL is accessible
 - Check Firebase/GitHub URL permissions
 
-### Issue: "App crashes on Android 4.4"
-**Solution:** This app is tested to support Android API 20+. If issues persist:
+### Issue: "App crashes on older Android"
+**Solution:** This app supports Android API 24+ (Android 7.0). If issues persist:
 - Check logcat: `adb logcat | grep flutter`
-- Ensure min SDK is set to 20 in `android/app/build.gradle`
+- Ensure min SDK is `flutter.minSdkVersion` (24) in `android/app/build.gradle`
 
 ## Dependencies
 
-- **webview_flutter**: 4.4.0 - Official Flutter WebView
-- **http**: 1.1.0 - HTTP client for fetching configuration
-- **flutter_lints**: 3.0.0 - Linting rules
+- **flutter_inappwebview**: 6.2.0-beta.3 - WebView with popup (multi-window) support. The stable 6.1.5 does not build with AGP 9 (`proguard-android.txt` is no longer supported); move to the next stable release once available.
+- **http**: 1.6.0 - HTTP client for fetching configuration
+- **sqflite**: 2.4.5 - Local SQLite storage for the website list
+- **google_fonts**: 9.0.0 - Poppins typography
+- **material_ui**: 1.8.0 - Material Design widgets (decoupled from the Flutter SDK; import `package:material_ui/material_ui.dart` instead of `package:flutter/material.dart`)
+- **flutter_animate**: 4.5.2 - UI animations
+- **intl**: 0.20.3 - Date formatting in error logs
+- **path**: 1.9.1 - Database path handling
+- **flutter_lints**: 6.0.0 - Linting rules
+- **sqflite_common_ffi** (dev): 2.4.5 - SQLite in unit tests (schema migration)
 
 ## Performance
 
@@ -221,7 +283,7 @@ flutter run
 
 For issues or questions:
 1. Check Flutter documentation: https://flutter.dev/docs
-2. Check WebView documentation: https://pub.dev/packages/webview_flutter
+2. Check WebView documentation: https://pub.dev/packages/flutter_inappwebview
 3. Review app logs: `flutter logs`
 
 ## License

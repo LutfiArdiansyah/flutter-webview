@@ -1,19 +1,23 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
-
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../constants/app_constants.dart';
 import '../models/webview_config.dart';
 import '../screens/error_logs_screen.dart';
 import '../services/database_service.dart';
 import '../services/error_logger_service.dart';
+import '../services/navigation_policy.dart';
+import '../services/screen_orientation_service.dart';
 import '../services/url_loader_service.dart';
+import '../services/website_search_index.dart';
+import '../services/webview_user_agent_switcher.dart';
+import 'allowed_hosts_field.dart';
+import 'popup_webview_dialog.dart';
+import 'visual_effects.dart';
 
 /// Main screen displaying WebView content
 class WebViewScreen extends StatefulWidget {
@@ -24,34 +28,73 @@ class WebViewScreen extends StatefulWidget {
 }
 
 class _WebViewScreenState extends State<WebViewScreen> {
-  late final WebViewController _webViewController;
+  /// Available once the main [InAppWebView] has been created; null while it
+  /// is not in the tree.
+  InAppWebViewController? _webViewController;
+  Completer<InAppWebViewController> _webViewReady = Completer();
+  WebViewUserAgentSwitcher? _userAgentSwitcher;
+
+  /// Navigation rules for the selected website. Null blocks everything.
+  NavigationPolicy? _navigationPolicy;
+
+  /// Context of the open popup dialog, if any (at most one at a time).
+  BuildContext? _popupContext;
+  bool _isPopupOpen = false;
+
   final UrlLoaderService _urlLoaderService = UrlLoaderService();
   final ErrorLoggerService _errorLogger = ErrorLoggerService();
   final DatabaseService _databaseService = DatabaseService();
+  final ScreenOrientationService _screenOrientationService =
+      ScreenOrientationService();
   final FocusNode _webViewFocusNode = FocusNode();
 
+  /// Completes once WebView data left over from a previous session has been
+  /// cleared. Never throws; awaited before the first page load so stale
+  /// cookies/storage can never leak into a fresh session.
+  late final Future<void> _startupCleanup;
+
   List<WebsiteConfig> _websites = [];
+  WebsiteSearchIndex? _searchIndexCache;
+
+  /// Search index for [_websites], rebuilt only when the list is replaced.
+  WebsiteSearchIndex get _websiteSearchIndex {
+    final cached = _searchIndexCache;
+    if (cached != null && identical(cached.websites, _websites)) {
+      return cached;
+    }
+    return _searchIndexCache = WebsiteSearchIndex(_websites);
+  }
   WebsiteConfig? _selectedWebsite;
   String? _errorMessage;
   DateTime? _lastBackPressed;
   bool _isLoadingUrl = true;
-  bool _isLoadingWebView = false;
+  /// Page-load progress. A notifier (not setState) so load events only
+  /// repaint the progress bar instead of rebuilding the whole screen.
+  final ValueNotifier<bool> _isLoadingWebView = ValueNotifier(false);
   bool _selectionDialogVisible = false;
   bool _isLandscapeMode = false;
   bool _orientationInitialized = false;
 
-  bool _isFabExpanded = false;
+  /// FAB menu state; only the FAB column listens to it.
+  final ValueNotifier<bool> _isFabExpanded = ValueNotifier(false);
+
+  /// Error count shown in the app bar at the last build; see
+  /// [_syncErrorBadge].
+  int _renderedErrorCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _initializeWebView();
+    // Runs concurrently with loading the website list so startup isn't slowed.
+    _startupCleanup = _clearWebViewDataOnStartup();
     _loadWebsites();
   }
 
   @override
   void dispose() {
     _webViewFocusNode.dispose();
+    _isLoadingWebView.dispose();
+    _isFabExpanded.dispose();
     super.dispose();
   }
 
@@ -66,61 +109,173 @@ class _WebViewScreenState extends State<WebViewScreen> {
     _orientationInitialized = true;
   }
 
-  /// Initialize WebViewController with proper settings and performance tweaks
-  void _initializeWebView() {
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (String url) {
-            if (!mounted) {
-              return;
-            }
-            setState(() {
-              _isLoadingWebView = true;
-            });
-          },
-          onPageFinished: (String url) {
-            if (!mounted) {
-              return;
-            }
-            setState(() {
-              _isLoadingWebView = false;
-            });
-            _webViewFocusNode.requestFocus();
-          },
-          onWebResourceError: (WebResourceError error) {
-            final isMainFrame = error.isForMainFrame ?? false;
-            if (!isMainFrame) {
-              return;
-            }
+  /// Main WebView. Settings (JS, media autoplay without gesture, popups)
+  /// come from [buildWebViewSettings].
+  Widget _buildWebView() => InAppWebView(
+        initialSettings: buildWebViewSettings(),
+        onWebViewCreated: (controller) {
+          _webViewController = controller;
+          _userAgentSwitcher =
+              WebViewUserAgentSwitcher(initialUserAgent: null);
+          if (!_webViewReady.isCompleted) {
+            _webViewReady.complete(controller);
+          }
+        },
+        onLoadStart: (controller, url) {
+          // Fallback for loads that skip shouldOverrideUrlLoading (e.g. POST
+          // form submissions returning from Google sign-in).
+          _userAgentSwitcher?.applyFor(controller, url?.toString());
+          if (!mounted) {
+            return;
+          }
+          _isLoadingWebView.value = true;
+          _syncErrorBadge();
+        },
+        onLoadStop: (controller, url) {
+          if (!mounted) {
+            return;
+          }
+          _isLoadingWebView.value = false;
+          _syncErrorBadge();
+          _webViewFocusNode.requestFocus();
+        },
+        onReceivedError: (controller, request, error) {
+          final isMainFrame = request.isForMainFrame ?? false;
+          if (!isMainFrame) {
+            return;
+          }
 
-            if (error.description.contains('ERR_CONNECTION_REFUSED') ||
-                error.description.contains('ERR_ABORTED')) {
-              debugPrint('Ignoring WebView error: ${error.description}');
-              return;
-            }
-            _handleWebViewError(error);
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            final currentHost = Uri.parse(_selectedWebsite!.webviewUrl).host;
-            final nextHost = Uri.parse(request.url).host;
-
-            if (nextHost != currentHost) {
-              debugPrint('Blocked: ${request.url}');
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-        ),
+          if (error.description.contains('ERR_CONNECTION_REFUSED') ||
+              error.description.contains('ERR_ABORTED')) {
+            debugPrint('Ignoring WebView error: ${error.description}');
+            return;
+          }
+          _handleWebViewError(error);
+        },
+        shouldOverrideUrlLoading: (controller, action) async {
+          final url = action.request.url?.toString();
+          final policy = _navigationPolicy;
+          if (policy == null || !policy.isAllowed(url)) {
+            debugPrint('Blocked: ${blockedHostForLog(url)}');
+            return NavigationActionPolicy.CANCEL;
+          }
+          if (action.isForMainFrame) {
+            await _userAgentSwitcher?.applyFor(controller, url);
+          }
+          return NavigationActionPolicy.ALLOW;
+        },
+        onCreateWindow: (controller, action) => _openPopup(action),
       );
 
-    // Performance tweaks specifically for Android TV (e.g. Media playback)
-    if (_webViewController.platform is AndroidWebViewController) {
-      // Allow media to auto-play without requiring user interaction
-      // (vital for Anime streaming)
-      (_webViewController.platform as AndroidWebViewController)
-          .setMediaPlaybackRequiresUserGesture(false);
+  /// Opens an allowlisted popup (e.g. "Sign in with Google") in a dialog.
+  /// Returns false to refuse it: not allowlisted, or a popup is already
+  /// open (keeps pop-under ads and popup floods out).
+  Future<bool> _openPopup(CreateWindowAction action) async {
+    final policy = _navigationPolicy;
+    final url = action.request.url?.toString();
+    if (!mounted || policy == null || _isPopupOpen) {
+      return false;
+    }
+    // A popup opened without a URL navigates afterwards; the popup itself
+    // enforces the same policy on that navigation.
+    final hasUrl = url != null && url.isNotEmpty;
+    if (hasUrl && !policy.isAllowed(url)) {
+      debugPrint('Blocked popup: ${blockedHostForLog(url)}');
+      return false;
+    }
+
+    _isPopupOpen = true;
+    final userAgent =
+        await WebViewUserAgentSwitcher.initialUserAgentFor(hasUrl ? url : null);
+    if (!mounted) {
+      _isPopupOpen = false;
+      return false;
+    }
+
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          _popupContext = dialogContext;
+          return PopupWebViewDialog(
+            windowId: action.windowId,
+            policy: policy,
+            initialUserAgent: userAgent,
+          );
+        },
+      ).whenComplete(() {
+        _popupContext = null;
+        _isPopupOpen = false;
+        if (mounted) {
+          _webViewFocusNode.requestFocus();
+        }
+      }),
+    );
+    return true;
+  }
+
+  void _closePopup() {
+    final popupContext = _popupContext;
+    if (popupContext != null && popupContext.mounted) {
+      Navigator.of(popupContext).pop();
+    }
+  }
+
+  /// Rebuilds [_navigationPolicy] for the selected website, using the
+  /// freshest stored allowlist (it may have changed through a sync or edit
+  /// after the website was selected).
+  void _refreshNavigationPolicy() {
+    final selected = _selectedWebsite;
+    if (selected == null) {
+      _navigationPolicy = null;
+      return;
+    }
+    final latest = _websites.firstWhere(
+      (w) => selected.isCustom
+          ? w.id == selected.id
+          : !w.isCustom && w.webviewUrl == selected.webviewUrl,
+      orElse: () => selected,
+    );
+    _navigationPolicy =
+        NavigationPolicy.forWebsite(selected.webviewUrl, latest.allowedHosts);
+  }
+
+  /// Forgets the main WebView when it leaves the tree (no website selected),
+  /// so the next selection waits for the newly created one.
+  void _detachWebView() {
+    _closePopup();
+    _webViewController = null;
+    _userAgentSwitcher = null;
+    if (_webViewReady.isCompleted) {
+      _webViewReady = Completer();
+    }
+  }
+
+  /// Default websites stored before allowlists existed have no `allowed`
+  /// hosts. Re-sync them once in the background; on failure the next launch
+  /// tries again. Never blocks or interrupts the user.
+  Future<void> _resyncAllowlistsIfNeeded() async {
+    try {
+      if (!await _databaseService.needsAllowlistResync()) {
+        return;
+      }
+      final remoteWebsites = await _urlLoaderService.fetchWebsites();
+      await _databaseService.syncDefaultWebsites(remoteWebsites);
+      final updatedWebsites = await _databaseService.getWebsites();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _websites = updatedWebsites;
+        _refreshNavigationPolicy();
+      });
+    } on Exception catch (e) {
+      debugPrint('Allowlist resync failed: $e');
+      _errorLogger.logWarning(
+        'Allowlist Resync',
+        'Background sync failed; it will be retried on next launch.',
+      );
     }
   }
 
@@ -132,6 +287,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
         final remoteWebsites = await _urlLoaderService.fetchWebsites();
         await _databaseService.syncDefaultWebsites(remoteWebsites);
         websites = await _databaseService.getWebsites();
+      } else {
+        unawaited(_resyncAllowlistsIfNeeded());
       }
 
       if (!mounted) {
@@ -167,8 +324,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     final selectedWebsite = await showDialog<WebsiteConfig>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+      builder: (dialogContext) => VisualEffects.dialogBackdrop(
         child: StatefulBuilder(
           builder: (context, setDialogState) {
             // Keep tempSelected in sync with available websites
@@ -182,11 +338,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
             // Use MediaQuery so the dialog always fits inside the physical
 
-            final filteredWebsites = _websites.where((w) {
-              final query = searchQuery.toLowerCase();
-              return w.websiteName.toLowerCase().contains(query) ||
-                  w.webviewUrl.toLowerCase().contains(query);
-            }).toList();
+            final filteredWebsites = _websiteSearchIndex.filter(searchQuery);
             // screen regardless of device size or pixel density.
             final screenHeight = MediaQuery.of(context).size.height;
             final maxDialogHeight = (screenHeight * 0.82).clamp(300.0, 600.0);
@@ -215,13 +367,11 @@ class _WebViewScreenState extends State<WebViewScreen> {
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.1),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 40,
-                      spreadRadius: 10,
-                    ),
-                  ],
+                  boxShadow: VisualEffects.shadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 40,
+                    spreadRadius: 10,
+                  ),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -373,7 +523,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                       ),
                                     )
                                   : ListView.builder(
-                                      shrinkWrap: true,
+                                      shrinkWrap: shouldShrinkWrapList(
+                                        filteredWebsites.length,
+                                      ),
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 16, vertical: 12),
                                       itemCount: filteredWebsites.length,
@@ -471,12 +623,24 @@ class _WebViewScreenState extends State<WebViewScreen> {
       return;
     }
 
+    _closePopup();
     setState(() {
       _selectedWebsite = selectedWebsite;
       _isLoadingUrl = false;
+      _refreshNavigationPolicy();
     });
 
-    await _webViewController.loadRequest(Uri.parse(selectedWebsite.webviewUrl));
+    await _startupCleanup;
+    if (!mounted) {
+      return;
+    }
+    final controller = await _webViewReady.future;
+    if (!mounted) {
+      return;
+    }
+    await controller.loadUrl(
+      urlRequest: URLRequest(url: WebUri(selectedWebsite.webviewUrl)),
+    );
     _webViewFocusNode.requestFocus();
   }
 
@@ -555,14 +719,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
         TextEditingController(text: existing?.websiteName ?? '');
     final urlController =
         TextEditingController(text: existing?.webviewUrl ?? '');
+    final allowedController = TextEditingController(
+      text: AllowedHostsField.format(existing?.allowedHosts ?? const []),
+    );
 
     showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        return VisualEffects.dialogBackdrop(
           child: Dialog(
             backgroundColor: Colors.transparent,
             elevation: 0,
@@ -572,15 +738,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
                 color: theme.colorScheme.surface.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: Colors.white10),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    blurRadius: 40,
-                    spreadRadius: 10,
-                  ),
-                ],
+                boxShadow: VisualEffects.shadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 40,
+                  spreadRadius: 10,
+                ),
               ),
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: Form(
                   key: formKey,
@@ -677,6 +841,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
                           return null;
                         },
                       ),
+                      const SizedBox(height: 16),
+                      AllowedHostsField(controller: allowedController),
                       const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
@@ -696,12 +862,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                     !url.startsWith('https://')) {
                                   url = 'https://$url';
                                 }
+                                final allowedHosts = AllowedHostsField.parse(
+                                  allowedController.text,
+                                );
 
                                 if (existing == null) {
                                   final newSite = WebsiteConfig(
                                     websiteName: name,
                                     webviewUrl: url,
                                     isCustom: true,
+                                    allowedHosts: allowedHosts,
                                   );
                                   await _databaseService.insertWebsite(newSite);
                                 } else {
@@ -711,6 +881,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
                                     webviewUrl: url,
                                     version: existing.version,
                                     isCustom: true,
+                                    allowedHosts: allowedHosts,
                                   );
                                   await _databaseService
                                       .updateWebsite(updatedSite);
@@ -724,6 +895,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
                                 setState(() {
                                   _websites = updatedWebsites;
+                                  // Applies an edited allowlist to the
+                                  // website that is currently open.
+                                  _refreshNavigationPolicy();
                                 });
 
                                 setDialogState(() {});
@@ -771,8 +945,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
       barrierDismissible: true,
       builder: (dialogContext) {
         final theme = Theme.of(dialogContext);
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        return VisualEffects.dialogBackdrop(
           child: AlertDialog(
             backgroundColor: theme.colorScheme.surface.withValues(alpha: 0.95),
             shape: RoundedRectangleBorder(
@@ -805,7 +978,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     _websites = updatedWebsites;
                     if (_selectedWebsite?.id == website.id) {
                       _selectedWebsite = null;
+                      _detachWebView();
                     }
+                    _refreshNavigationPolicy();
                   });
 
                   setDialogState(() {});
@@ -851,7 +1026,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
       return;
     }
     setState(() {
-      _isLoadingWebView = false;
+      _isLoadingWebView.value = false;
     });
   }
 
@@ -893,6 +1068,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
       _isLoadingUrl = true;
       _websites = [];
       _selectedWebsite = null;
+      _detachWebView();
+      _refreshNavigationPolicy();
     });
     _loadWebsites();
   }
@@ -907,6 +1084,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
         : const [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown];
 
     await SystemChrome.setPreferredOrientations(orientations);
+    if (targetLandscape) {
+      await _screenOrientationService.setLandscapeFollowingSensor();
+    }
     if (!mounted) {
       return;
     }
@@ -915,17 +1095,32 @@ class _WebViewScreenState extends State<WebViewScreen> {
     });
   }
 
-  Future<void> _clearCacheAndData() async {
-    setState(() {
-      _isLoadingWebView = true;
-      _isFabExpanded = false;
-    });
-
-    await _webViewController.clearCache();
-    await _webViewController.clearLocalStorage();
-    if (_webViewController.platform is AndroidWebViewController) {
-      await WebViewCookieManager().clearCookies();
+  /// Clears WebView cache, local storage and (on Android) cookies.
+  /// Uses static APIs so it also works before any WebView exists.
+  Future<void> _clearWebViewData() async {
+    await InAppWebViewController.clearAllCache();
+    await WebStorageManager.instance().deleteAllData();
+    if (Platform.isAndroid) {
+      await CookieManager.instance().deleteAllCookies();
     }
+  }
+
+  /// Clears WebView data on app launch. Failures are logged and swallowed so
+  /// a cleanup problem never blocks the user from opening a website.
+  Future<void> _clearWebViewDataOnStartup() async {
+    try {
+      await _clearWebViewData();
+    } on Exception catch (e) {
+      _errorLogger.logError('Startup Cleanup Error', e.toString());
+    }
+  }
+
+  Future<void> _clearCacheAndData() async {
+    _closePopup();
+    _isLoadingWebView.value = true;
+    _isFabExpanded.value = false;
+
+    await _clearWebViewData();
 
     if (!mounted) {
       return;
@@ -947,25 +1142,38 @@ class _WebViewScreenState extends State<WebViewScreen> {
         ),
       );
 
-    await _webViewController.reload();
+    await _webViewController?.reload();
 
     if (!mounted) {
       return;
     }
-    setState(() {
-      _isLoadingWebView = false;
-    });
+    _isLoadingWebView.value = false;
+    _syncErrorBadge();
   }
 
-  Widget _buildFloatingButtons() => Padding(
+  /// Rebuilds the screen only when the error count shown in the app bar is
+  /// stale (errors can be logged outside setState, e.g. startup cleanup).
+  void _syncErrorBadge() {
+    if (mounted && _errorLogger.getErrorCount() != _renderedErrorCount) {
+      setState(() {});
+    }
+  }
+
+  // Listens to [_isFabExpanded] so opening/closing the menu rebuilds only the
+  // buttons; the RepaintBoundary keeps their animations from repainting the
+  // rest of the screen.
+  Widget _buildFloatingButtons() => RepaintBoundary(
+      child: Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.sizeOf(context).height * 0.05,
       ),
-      child: Column(
+      child: ValueListenableBuilder<bool>(
+      valueListenable: _isFabExpanded,
+      builder: (context, isFabExpanded, _) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (_isFabExpanded) ...[
+          if (isFabExpanded) ...[
             FloatingActionButton.extended(
               heroTag: 'clear-cache',
               onPressed: _clearCacheAndData,
@@ -986,7 +1194,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             FloatingActionButton.extended(
               heroTag: 'switch-website',
               onPressed: () {
-                setState(() => _isFabExpanded = false);
+                _isFabExpanded.value = false;
                 _showWebsiteSelectionDialog();
               },
               icon: const Icon(Icons.public),
@@ -1006,7 +1214,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             FloatingActionButton.extended(
               heroTag: 'orientation-toggle',
               onPressed: () {
-                setState(() => _isFabExpanded = false);
+                _isFabExpanded.value = false;
                 _toggleOrientation();
               },
               icon: Icon(_isLandscapeMode
@@ -1029,7 +1237,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             FloatingActionButton.extended(
               heroTag: 'exit-app',
               onPressed: () {
-                setState(() => _isFabExpanded = false);
+                _isFabExpanded.value = false;
                 SystemNavigator.pop();
               },
               icon: const Icon(Icons.exit_to_app),
@@ -1051,9 +1259,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
           FloatingActionButton(
             heroTag: 'menu-toggle',
             onPressed: () {
-              setState(() {
-                _isFabExpanded = !_isFabExpanded;
-              });
+              _isFabExpanded.value = !_isFabExpanded.value;
             },
             backgroundColor: Theme.of(context).colorScheme.surface,
             child: AnimatedSwitcher(
@@ -1063,13 +1269,13 @@ class _WebViewScreenState extends State<WebViewScreen> {
                       ? Tween<double>(begin: 0.5, end: 1).animate(anim)
                       : Tween<double>(begin: 0.5, end: 1).animate(anim),
                   child: FadeTransition(opacity: anim, child: child)),
-              child: _isFabExpanded
+              child: isFabExpanded
                   ? const Icon(Icons.close, key: ValueKey('icon1'), size: 28)
                   : const Icon(Icons.menu, key: ValueKey('icon2'), size: 28),
             ),
           ),
         ],
-      ));
+      ))));
 
   Widget _buildLoadingScreen() => Scaffold(
         body: Container(
@@ -1095,19 +1301,26 @@ class _WebViewScreenState extends State<WebViewScreen> {
                         .colorScheme
                         .primary
                         .withValues(alpha: 0.1),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.3),
-                          blurRadius: 50,
-                          spreadRadius: 10),
-                    ],
+                    boxShadow: VisualEffects.shadow(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.3),
+                      blurRadius: 50,
+                      spreadRadius: 10,
+                    ),
                   ),
                   child: const Icon(Icons.movie_filter,
                           size: 72, color: Colors.white)
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .animate(
+                        onPlay: (c) {
+                          // Low-end devices play the pulse once instead of
+                          // repainting it every frame.
+                          if (VisualEffects.allowLoopingAnimations) {
+                            c.repeat(reverse: true);
+                          }
+                        },
+                      )
                       .scale(
                           begin: const Offset(0.95, 0.95),
                           end: const Offset(1.05, 1.05),
@@ -1222,6 +1435,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _renderedErrorCount = _errorLogger.getErrorCount();
     if (_errorMessage != null) {
       return _buildErrorScreen();
     }
@@ -1239,8 +1453,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
         final messenger = ScaffoldMessenger.of(context);
         final surfaceColor = Theme.of(context).colorScheme.surface;
 
-        if (await _webViewController.canGoBack()) {
-          await _webViewController.goBack();
+        final controller = _webViewController;
+        if (controller != null && await controller.canGoBack()) {
+          await controller.goBack();
           return;
         }
 
@@ -1331,18 +1546,24 @@ class _WebViewScreenState extends State<WebViewScreen> {
               Focus(
                 focusNode: _webViewFocusNode,
                 autofocus: true,
-                child: WebViewWidget(controller: _webViewController),
+                child: _buildWebView(),
               ),
-              if (_isLoadingWebView)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: LinearProgressIndicator(
-                    color: Theme.of(context).colorScheme.secondary,
-                    backgroundColor: Colors.transparent,
-                  ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _isLoadingWebView,
+                  builder: (context, isLoading, _) => isLoading
+                      ? RepaintBoundary(
+                          child: LinearProgressIndicator(
+                            color: Theme.of(context).colorScheme.secondary,
+                            backgroundColor: Colors.transparent,
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
+              ),
             ],
           ),
         ),

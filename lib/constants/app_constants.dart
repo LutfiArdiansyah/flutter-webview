@@ -41,4 +41,42 @@ class AppConstants {
   /// Generic error message
   static const String genericErrorMessage =
       'Something went wrong. Please try again.';
+
+  /// Maximum number of `allowed` patterns kept per website.
+  static const int maxAllowedHosts = 100;
+
+  /// Maximum length of one `allowed` pattern (DNS name limit).
+  static const int maxAllowedHostLength = 253;
+
+  /// Hosts needed for Google sign-in and common captchas. Only used to
+  /// pre-fill the allowlist input; never allowed automatically.
+  static const List<String> googleAndCaptchaHosts = [
+    'accounts.google.com',
+    'accounts.google.co.id',
+    'accounts.youtube.com',
+    'gds.google.com',
+    'challenges.cloudflare.com',
+    'www.google.com/recaptcha/',
+    'recaptcha.net',
+    '*.recaptcha.net',
+    '*.hcaptcha.com',
+  ];
+
+  /// Allowlist input label
+  static const String allowedHostsLabel =
+      'Host yang diizinkan (satu per baris)';
+
+  /// Allowlist input hint
+  static const String allowedHostsHint =
+      '*.example.com\naccounts.google.com\nwww.google.com/recaptcha/';
+
+  /// Allowlist input helper
+  static const String allowedHostsHelper =
+      'Opsional. Host lain di luar website ini yang boleh dibuka.';
+
+  /// Button that fills the Google sign-in and captcha hosts
+  static const String fillGoogleAndCaptchaLabel = 'Isi Google & Captcha';
+
+  /// Popup close button tooltip
+  static const String closePopupTooltip = 'Tutup';
 }
