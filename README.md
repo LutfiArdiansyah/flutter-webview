@@ -6,7 +6,7 @@ A Flutter application that displays webview from remote JSON configuration. Supp
 
 - ✅ WebView from dynamic URL (loaded from GitHub JSON)
 - ✅ Support Android 7.0 Nougat (API 24) and above
-- ✅ WebView cache, local storage, and cookies are cleared automatically on every app launch (saved website list is kept)
+- ✅ Website logins persist across app restarts (cookies, local storage and cache are kept; cookies are flushed to disk on page load, when the app goes to the background and before exiting). The "Clear Cache" button clears cache, local storage and cookies (signs out of all websites)
 - ✅ Landscape mode follows the device sensor and flips 180° like YouTube, even when system auto-rotate is locked (Android)
 - ✅ Support for Android Set Top Box (TV with Remote)
 - ✅ Error handling with retry mechanism

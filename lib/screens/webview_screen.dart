@@ -14,6 +14,7 @@ import '../services/navigation_policy.dart';
 import '../services/screen_orientation_service.dart';
 import '../services/url_loader_service.dart';
 import '../services/website_search_index.dart';
+import '../services/webview_session_persistence.dart';
 import '../services/webview_user_agent_switcher.dart';
 import 'allowed_hosts_field.dart';
 import 'popup_webview_dialog.dart';
@@ -27,7 +28,8 @@ class WebViewScreen extends StatefulWidget {
   State<WebViewScreen> createState() => _WebViewScreenState();
 }
 
-class _WebViewScreenState extends State<WebViewScreen> {
+class _WebViewScreenState extends State<WebViewScreen>
+    with WidgetsBindingObserver {
   /// Available once the main [InAppWebView] has been created; null while it
   /// is not in the tree.
   InAppWebViewController? _webViewController;
@@ -48,10 +50,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
       ScreenOrientationService();
   final FocusNode _webViewFocusNode = FocusNode();
 
-  /// Completes once WebView data left over from a previous session has been
-  /// cleared. Never throws; awaited before the first page load so stale
-  /// cookies/storage can never leak into a fresh session.
-  late final Future<void> _startupCleanup;
+  /// Keeps login cookies on disk across app restarts. WebView data is no
+  /// longer cleared on launch; only the "Clear Cache" button clears it.
+  final WebViewSessionPersistence _sessionPersistence =
+      WebViewSessionPersistence();
 
   List<WebsiteConfig> _websites = [];
   WebsiteSearchIndex? _searchIndexCache;
@@ -85,13 +87,30 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   void initState() {
     super.initState();
-    // Runs concurrently with loading the website list so startup isn't slowed.
-    _startupCleanup = _clearWebViewDataOnStartup();
+    WidgetsBinding.instance.addObserver(this);
     _loadWebsites();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Persist the session before the OS may kill the process (Home button,
+    // app switcher swipe, set-top box standby).
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(_sessionPersistence.flush());
+    }
+  }
+
+  /// Saves cookies, then closes the app.
+  Future<void> _exitApp() async {
+    await _sessionPersistence.flush();
+    await SystemNavigator.pop();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _webViewFocusNode.dispose();
     _isLoadingWebView.dispose();
     _isFabExpanded.dispose();
@@ -138,6 +157,8 @@ class _WebViewScreenState extends State<WebViewScreen> {
           _isLoadingWebView.value = false;
           _syncErrorBadge();
           _webViewFocusNode.requestFocus();
+          // A login usually ends with a page load; save its cookies soon.
+          unawaited(_sessionPersistence.flushAfterPageLoad());
         },
         onReceivedError: (controller, request, error) {
           final isMainFrame = request.isForMainFrame ?? false;
@@ -562,9 +583,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          const TextButton(
-                            onPressed: SystemNavigator.pop,
-                            child: Text('Keluar',
+                          TextButton(
+                            onPressed: _exitApp,
+                            child: const Text('Keluar',
                                 style: TextStyle(color: Colors.redAccent)),
                           ),
                           const Spacer(),
@@ -630,10 +651,6 @@ class _WebViewScreenState extends State<WebViewScreen> {
       _refreshNavigationPolicy();
     });
 
-    await _startupCleanup;
-    if (!mounted) {
-      return;
-    }
     final controller = await _webViewReady.future;
     if (!mounted) {
       return;
@@ -1105,22 +1122,15 @@ class _WebViewScreenState extends State<WebViewScreen> {
     }
   }
 
-  /// Clears WebView data on app launch. Failures are logged and swallowed so
-  /// a cleanup problem never blocks the user from opening a website.
-  Future<void> _clearWebViewDataOnStartup() async {
-    try {
-      await _clearWebViewData();
-    } on Exception catch (e) {
-      _errorLogger.logError('Startup Cleanup Error', e.toString());
-    }
-  }
-
   Future<void> _clearCacheAndData() async {
     _closePopup();
     _isLoadingWebView.value = true;
     _isFabExpanded.value = false;
 
     await _clearWebViewData();
+    // Persist the deletion too, otherwise the cleared session could come
+    // back if the app is killed before Android writes cookies to disk.
+    unawaited(_sessionPersistence.flush());
 
     if (!mounted) {
       return;
@@ -1238,7 +1248,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
               heroTag: 'exit-app',
               onPressed: () {
                 _isFabExpanded.value = false;
-                SystemNavigator.pop();
+                _exitApp();
               },
               icon: const Icon(Icons.exit_to_app),
               label: const Text('Keluar',
@@ -1482,7 +1492,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
             );
           return;
         }
-        await SystemNavigator.pop();
+        await _exitApp();
       },
       child: Scaffold(
         appBar: _errorLogger.getErrorCount() > 0
